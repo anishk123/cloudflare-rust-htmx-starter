@@ -348,6 +348,30 @@ fn is_uuid_like(s: &str) -> bool {
             .all(|(i, c)| matches!(i, 8 | 13 | 18 | 23) || c.is_ascii_hexdigit())
 }
 
+/// True while any process remains in the `pgid` process group. `kill(2)` with
+/// signal 0 probes delivery: success, or EPERM (a member is being reaped)
+/// means the group still exists; only ESRCH means it is gone.
+#[cfg(unix)]
+fn process_group_alive(pgid: i32) -> bool {
+    unsafe {
+        if libc::kill(-pgid, 0) == 0 {
+            return true;
+        }
+        #[cfg(target_os = "macos")]
+        {
+            *libc::__error() != libc::ESRCH
+        }
+        #[cfg(target_os = "linux")]
+        {
+            *libc::__errno_location() != libc::ESRCH
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+        {
+            false
+        }
+    }
+}
+
 fn e2e() -> Result<(), String> {
     use std::{thread, time::Duration};
 
@@ -391,9 +415,17 @@ fn e2e() -> Result<(), String> {
         "--persist-to",
     ])
     .arg(&state)
-    .args(["--port", port])
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit());
+    .args(["--port", port]);
+    // Write the Workers' output to a log file instead of inheriting the
+    // step's stdout/stderr. The GitHub Actions runner marks a step complete
+    // only when every process holding its output pipe has exited, so a
+    // lingering workerd cancels the step even after the smoke passes; a file
+    // gives orphans nothing to hold. The log is surfaced after the smoke.
+    let log_path = env::temp_dir().join(format!("rust-htmx-e2e-{}.log", std::process::id()));
+    let log_out = fs::File::create(&log_path).map_err(|e| e.to_string())?;
+    let log_err = log_out.try_clone().map_err(|e| e.to_string())?;
+    dev.stdout(Stdio::from(log_out))
+        .stderr(Stdio::from(log_err));
     // Run the Workers in their own process group so cleanup can kill npx and
     // its wrangler/node descendants together; killing only the direct child
     // orphans workerd, which keeps the inherited stdout pipe open and hangs
@@ -540,11 +572,30 @@ fn e2e() -> Result<(), String> {
 
     #[cfg(unix)]
     {
-        // kill the whole process group (npx + wrangler + workerd); see the
-        // comment above the spawn for why the direct child alone is not enough.
-        let _ = Command::new("kill")
-            .args(["-TERM", &format!("-{}", child.id())])
-            .status();
+        // Kill the whole process group (npx + wrangler + workerd); see the
+        // comment above the spawn for why the direct child alone is not
+        // enough. TERM first for a graceful shutdown, then KILL anything that
+        // lingers, and wait until the group is actually gone so no descendant
+        // outlives this process (which would hang CI's step pipe).
+        let pgid = child.id() as i32;
+        unsafe {
+            libc::kill(-pgid, libc::SIGTERM);
+        }
+        for _ in 0..10 {
+            if !process_group_alive(pgid) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        unsafe {
+            libc::kill(-pgid, libc::SIGKILL);
+        }
+        for _ in 0..50 {
+            if !process_group_alive(pgid) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
         let _ = child.wait();
     }
     #[cfg(not(unix))]
@@ -552,7 +603,19 @@ fn e2e() -> Result<(), String> {
         let _ = child.kill();
         let _ = child.wait();
     }
+    // Surface the Workers' log: full on failure, tail on success.
+    if let Ok(log) = fs::read_to_string(&log_path) {
+        let lines: Vec<&str> = log.lines().collect();
+        let shown = if result.is_ok() {
+            let start = lines.len().saturating_sub(25);
+            lines[start..].join("\n")
+        } else {
+            log
+        };
+        println!("--- local Workers log ---\n{shown}\n---");
+    }
     let _ = fs::remove_dir_all(&state);
+    let _ = fs::remove_file(&log_path);
     result
 }
 
