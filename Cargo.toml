@@ -38,5 +38,10 @@ starter-shared = { path = "crates/shared" }
 opt-level = "s"
 lto = true
 codegen-units = 1
-strip = true
+# `strip = "debuginfo"` (not `strip = true`): symbol stripping removes the
+# wasm `target_features` custom section, which wasm-bindgen 0.2.125+ needs to
+# run its externref transform on `panic = "abort"` builds. With `strip = true`
+# worker-build fails with "externref table required for catch wrappers"
+# (cloudflare/workers-rs#1014).
+strip = "debuginfo"
 panic = "abort"

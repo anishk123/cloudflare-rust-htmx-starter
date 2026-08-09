@@ -15,6 +15,8 @@ The data model is owner-scoped even though no identity provider is wired up. Eve
 
 Until real auth lands, the caller presents an `x-user-id` header that the app worker resolves into the request's owner context (`current_user` in `workers/app/src/lib.rs`). This is a **developer placeholder, not a credential** — anyone can set it. Replacing it with real authentication must keep the same shape: resolve a user identity per request, then pass it through the same repository functions. The offline outbox replay (`public/app.js`) forwards the same header from `localStorage` when present, so it automatically carries whatever auth context the browser has once real auth populates it.
 
+For local development the worker also reads a `DEV_USER_ID` var (empty in the committed `wrangler.jsonc`; override it in the ignored `workers/app/.dev.vars`, e.g. `DEV_USER_ID=11111111-1111-4111-8111-111111111111`) so the browser demo needs no header injection. Wrangler loads `.dev.vars` from the config file's directory, so the file lives next to `workers/app/wrangler.jsonc`. Never set `DEV_USER_ID` in a production deployment — it is a dev-only stand-in for the header.
+
 ## CSRF protection (double-submit cookie)
 
 State-changing routes (`create`, `summarize`, `publish`, `upload`) are protected by a stateless double-submit token — no session table, no crypto dependency:

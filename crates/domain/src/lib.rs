@@ -12,8 +12,12 @@ pub enum ValidationError {
 pub fn validate_create_note(input: &CreateNoteRequest) -> Result<(), ValidationError> {
     let title_len = input.title.trim().chars().count();
     let body_len = input.body.trim().chars().count();
-    if !(1..=120).contains(&title_len) { return Err(ValidationError::InvalidTitle); }
-    if !(1..=20_000).contains(&body_len) { return Err(ValidationError::InvalidBody); }
+    if !(1..=120).contains(&title_len) {
+        return Err(ValidationError::InvalidTitle);
+    }
+    if !(1..=20_000).contains(&body_len) {
+        return Err(ValidationError::InvalidBody);
+    }
     Ok(())
 }
 
@@ -21,8 +25,13 @@ pub fn slugify(value: &str) -> String {
     let mut out = String::new();
     let mut dash = false;
     for c in value.chars().flat_map(char::to_lowercase) {
-        if c.is_ascii_alphanumeric() { out.push(c); dash = false; }
-        else if !dash && !out.is_empty() { out.push('-'); dash = true; }
+        if c.is_ascii_alphanumeric() {
+            out.push(c);
+            dash = false;
+        } else if !dash && !out.is_empty() {
+            out.push('-');
+            dash = true;
+        }
     }
     out.trim_matches('-').to_string()
 }
@@ -89,7 +98,9 @@ fn is_valid_text(b: &[u8]) -> bool {
 
 fn looks_like_html(b: &[u8]) -> bool {
     const MARKERS: [&[u8]; 3] = [b"<script", b"<!doctype", b"<html"];
-    MARKERS.iter().any(|m| b.windows(m.len()).any(|w| w.eq_ignore_ascii_case(m)))
+    MARKERS
+        .iter()
+        .any(|m| b.windows(m.len()).any(|w| w.eq_ignore_ascii_case(m)))
 }
 
 /// Verify that the client-declared content type matches the file's actual
@@ -142,7 +153,9 @@ pub fn csrf_token_valid(submitted: Option<&str>, cookie: Option<&str>) -> bool {
 
 pub fn summarize_deterministically(body: &str) -> String {
     let clean = body.split_whitespace().collect::<Vec<_>>().join(" ");
-    if clean.chars().count() <= 180 { return clean; }
+    if clean.chars().count() <= 180 {
+        return clean;
+    }
     let prefix: String = clean.chars().take(177).collect();
     format!("{prefix}...")
 }
@@ -154,21 +167,48 @@ mod tests {
     use uuid::Uuid;
 
     fn req(title: &str, body: &str) -> CreateNoteRequest {
-        CreateNoteRequest { title: title.into(), body: body.into(), operation_id: Uuid::nil() }
+        CreateNoteRequest {
+            title: title.into(),
+            body: body.into(),
+            operation_id: Uuid::nil(),
+        }
     }
 
     #[test]
-    fn rejects_blank_title() { assert_eq!(validate_create_note(&req(" ", "body")), Err(ValidationError::InvalidTitle)); }
+    fn rejects_blank_title() {
+        assert_eq!(
+            validate_create_note(&req(" ", "body")),
+            Err(ValidationError::InvalidTitle)
+        );
+    }
     #[test]
-    fn rejects_blank_body() { assert_eq!(validate_create_note(&req("title", " ")), Err(ValidationError::InvalidBody)); }
+    fn rejects_blank_body() {
+        assert_eq!(
+            validate_create_note(&req("title", " ")),
+            Err(ValidationError::InvalidBody)
+        );
+    }
     #[test]
-    fn slug_is_url_safe() { assert_eq!(slugify("Hello, Rust + HTMX!"), "hello-rust-htmx"); }
+    fn slug_is_url_safe() {
+        assert_eq!(slugify("Hello, Rust + HTMX!"), "hello-rust-htmx");
+    }
     #[test]
-    fn backoff_is_capped() { assert_eq!(retry_delay_ms(99), 60_000); }
+    fn backoff_is_capped() {
+        assert_eq!(retry_delay_ms(99), 60_000);
+    }
     #[test]
-    fn summary_is_bounded() { assert!(summarize_deterministically(&"word ".repeat(100)).chars().count() <= 180); }
+    fn summary_is_bounded() {
+        assert!(
+            summarize_deterministically(&"word ".repeat(100))
+                .chars()
+                .count()
+                <= 180
+        );
+    }
     #[test]
-    fn quota_accepts_uploads_with_room() { assert!(within_upload_quota(0, 1024)); }
+    fn quota_accepts_uploads_with_room() {
+        assert!(within_upload_quota(0, 1024));
+    }
     #[test]
     fn quota_respects_exact_boundary() {
         assert!(within_upload_quota(UPLOAD_QUOTA_BYTES - 1024, 1024));
@@ -198,7 +238,10 @@ mod tests {
 
     #[test]
     fn jpeg_accepts_real_signature() {
-        assert_eq!(verify_upload("image/jpeg", &[0xFF, 0xD8, 0xFF, 0xE0, 0x00]), Ok(()));
+        assert_eq!(
+            verify_upload("image/jpeg", &[0xFF, 0xD8, 0xFF, 0xE0, 0x00]),
+            Ok(())
+        );
     }
 
     #[test]
@@ -254,13 +297,19 @@ mod tests {
 
     #[test]
     fn plain_text_accepts_utf8() {
-        assert_eq!(verify_upload("text/plain", "hello world\nsecond line".as_bytes()), Ok(()));
+        assert_eq!(
+            verify_upload("text/plain", "hello world\nsecond line".as_bytes()),
+            Ok(())
+        );
     }
 
     #[test]
     fn markdown_accepts_plain_markup() {
         assert_eq!(
-            verify_upload("text/markdown", b"# Title\n\nSome *emphasis* and a [link](https://example.com)."),
+            verify_upload(
+                "text/markdown",
+                b"# Title\n\nSome *emphasis* and a [link](https://example.com)."
+            ),
             Ok(())
         );
     }
@@ -283,19 +332,28 @@ mod tests {
 
     #[test]
     fn text_rejects_nul_bytes() {
-        assert_eq!(verify_upload("text/plain", b"hello\0world"), Err(UploadTypeError::NotText));
+        assert_eq!(
+            verify_upload("text/plain", b"hello\0world"),
+            Err(UploadTypeError::NotText)
+        );
     }
 
     #[test]
     fn text_rejects_invalid_utf8() {
-        assert_eq!(verify_upload("text/plain", &[0xFF, 0xFE, 0x00, 0x41]), Err(UploadTypeError::NotText));
+        assert_eq!(
+            verify_upload("text/plain", &[0xFF, 0xFE, 0x00, 0x41]),
+            Err(UploadTypeError::NotText)
+        );
     }
 
     #[test]
     fn html_smuggled_as_plain_text_is_rejected() {
         // The classic spoof: a real HTML document claiming to be text/plain.
         let html = b"<html><head><script src=https://evil.example/x></script></head><body>hi</body></html>";
-        assert_eq!(verify_upload("text/plain", html), Err(UploadTypeError::ContentTypeMismatch));
+        assert_eq!(
+            verify_upload("text/plain", html),
+            Err(UploadTypeError::ContentTypeMismatch)
+        );
     }
 
     #[test]
@@ -310,7 +368,10 @@ mod tests {
     fn binary_mismatch_rejected() {
         // A PNG bytes buffer claiming to be a JPEG.
         assert_eq!(
-            verify_upload("image/jpeg", &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]),
+            verify_upload(
+                "image/jpeg",
+                &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]
+            ),
             Err(UploadTypeError::ContentTypeMismatch)
         );
     }

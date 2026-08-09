@@ -1,4 +1,4 @@
-use maud::{html, Markup, PreEscaped, DOCTYPE};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
 use starter_contracts::{Note, NoteStatus};
 use starter_domain::slugify;
 

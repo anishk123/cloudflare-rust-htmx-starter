@@ -1,13 +1,13 @@
 # Rust + HTMX Cloudflare Starter
 
-[![CI](https://github.com/anishk123/rust-htmx-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/anishk123/rust-htmx-starter/actions/workflows/ci.yml)
-[![Security](https://github.com/anishk123/rust-htmx-starter/actions/workflows/security.yml/badge.svg)](https://github.com/anishk123/rust-htmx-starter/actions/workflows/security.yml)
+[![CI](https://github.com/anishk123/cloudflare-rust-htmx-starter/actions/workflows/ci.yml/badge.svg)](https://github.com/anishk123/cloudflare-rust-htmx-starter/actions/workflows/ci.yml)
+[![Security](https://github.com/anishk123/cloudflare-rust-htmx-starter/actions/workflows/security.yml/badge.svg)](https://github.com/anishk123/cloudflare-rust-htmx-starter/actions/workflows/security.yml)
 ![Rust](https://img.shields.io/badge/Rust-1.97.1-000000?logo=rust)
 ![workers-rs](https://img.shields.io/badge/workers--rs-0.8.5-F38020?logo=cloudflare)
 ![HTMX](https://img.shields.io/badge/HTMX-2.0.10-3366CC)
 ![Pico CSS](https://img.shields.io/badge/Pico_CSS-2.1.1-0172AD)
 ![Maud](https://img.shields.io/badge/Maud-0.27-6B7280)
-![Wrangler](https://img.shields.io/badge/Wrangler-4.114.0-F38020?logo=cloudflare)
+![Wrangler](https://img.shields.io/badge/Wrangler-4.120.0-F38020?logo=cloudflare)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A cloneable, mobile-first Cloudflare application foundation where **Rust renders semantic HTML**, **HTMX handles server interaction**, **Pico supplies minimal semantic styling**, and only a tiny amount of vanilla JavaScript handles browser-only capabilities such as PWA/offline state.

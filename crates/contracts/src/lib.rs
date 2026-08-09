@@ -1,4 +1,4 @@
-use schemars::{schema_for, JsonSchema};
+use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,7 +18,11 @@ pub struct Note {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum NoteStatus { Draft, Published, Archived }
+pub enum NoteStatus {
+    Draft,
+    Published,
+    Archived,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct CreateNoteRequest {
@@ -28,7 +32,9 @@ pub struct CreateNoteRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct CreateNoteResponse { pub note: Note }
+pub struct CreateNoteResponse {
+    pub note: Note,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct ApiError {
@@ -50,10 +56,15 @@ pub struct SyncOperationV1 {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum SyncAction { CreateNote, UpdateNote }
+pub enum SyncAction {
+    CreateNote,
+    UpdateNote,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct SyncBatchRequest { pub operations: Vec<SyncOperationV1> }
+pub struct SyncBatchRequest {
+    pub operations: Vec<SyncOperationV1>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub struct SyncResult {
@@ -65,7 +76,9 @@ pub struct SyncResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-pub struct SyncBatchResponse { pub results: Vec<SyncResult> }
+pub struct SyncBatchResponse {
+    pub results: Vec<SyncResult>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -74,7 +87,7 @@ pub enum JobV1 {
         contract_version: u8,
         job_id: Uuid,
         note_id: Uuid,
-    }
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -113,7 +126,11 @@ mod tests {
 
     #[test]
     fn queue_contract_round_trips() {
-        let job = JobV1::SummarizeNote { contract_version: 1, job_id: Uuid::nil(), note_id: Uuid::nil() };
+        let job = JobV1::SummarizeNote {
+            contract_version: 1,
+            job_id: Uuid::nil(),
+            note_id: Uuid::nil(),
+        };
         let value = serde_json::to_string(&job).unwrap();
         let decoded: JobV1 = serde_json::from_str(&value).unwrap();
         assert_eq!(job, decoded);

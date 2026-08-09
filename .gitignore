@@ -1,7 +1,7 @@
 /target
 **/build/
-/.wrangler
-/.dev.vars
+**/.wrangler
+**/.dev.vars
 /.cloudflare.env
 /.freebuff
 .DS_Store

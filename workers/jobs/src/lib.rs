@@ -1,4 +1,4 @@
-use starter_contracts::{JobV1, SummaryOutputV1, CONTRACT_VERSION};
+use starter_contracts::{CONTRACT_VERSION, JobV1, SummaryOutputV1};
 use starter_domain::summarize_deterministically;
 use starter_observability::log_event;
 use worker::*;

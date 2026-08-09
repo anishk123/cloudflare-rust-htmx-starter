@@ -13,6 +13,9 @@ struct NoteRow {
     created_at_ms: i64,
     updated_at_ms: i64,
     summary: Option<String>,
+    // Present in the row but deliberately not exposed on `Note`: published
+    // representations must not leak the owner's identity.
+    #[allow(dead_code)]
     owner_id: String,
 }
 
@@ -80,7 +83,7 @@ pub async fn list_published_notes(db: &D1Database) -> Result<Vec<Note>> {
     let result = worker::query!(
         db,
         "SELECT id,title,body,status,version,created_at_ms,updated_at_ms,summary,owner_id FROM notes WHERE status='published' ORDER BY updated_at_ms DESC"
-    )?
+    )
     .all()
     .await?;
     result
@@ -125,11 +128,13 @@ pub async fn create_note(
     .first::<String>(Some("entity_id"))
     .await?
     {
-        let existing_id = Uuid::parse_str(&entity_id)
-            .map_err(|e| worker::Error::RustError(e.to_string()))?;
+        let existing_id =
+            Uuid::parse_str(&entity_id).map_err(|e| worker::Error::RustError(e.to_string()))?;
         return find_owned_note(db, existing_id, owner_id)
             .await?
-            .ok_or_else(|| worker::Error::RustError("idempotency record points to a missing note".into()));
+            .ok_or_else(|| {
+                worker::Error::RustError("idempotency record points to a missing note".into())
+            });
     }
 
     let id = note.id.to_string();
@@ -186,9 +191,13 @@ pub async fn publish_note(
 /// as zero so the first upload always passes the quota check.
 pub async fn upload_bytes_used(db: &D1Database, owner_id: Uuid) -> Result<u64> {
     let owner = owner_id.to_string();
-    let row = worker::query!(db, "SELECT bytes_used FROM upload_usage WHERE owner_id=?1", owner)?
-        .first::<i64>(Some("bytes_used"))
-        .await?;
+    let row = worker::query!(
+        db,
+        "SELECT bytes_used FROM upload_usage WHERE owner_id=?1",
+        owner
+    )?
+    .first::<i64>(Some("bytes_used"))
+    .await?;
     Ok(row.map(|v| v as u64).unwrap_or(0))
 }
 
@@ -196,7 +205,12 @@ pub async fn upload_bytes_used(db: &D1Database, owner_id: Uuid) -> Result<u64> {
 /// the object is stored; the quota check runs before the write, so a failed
 /// D1 update leaves the object stored but uncounted (accounting drift only,
 /// never a quota bypass for future uploads of the same owner).
-pub async fn record_upload(db: &D1Database, owner_id: Uuid, size_bytes: u64, now_ms: i64) -> Result<()> {
+pub async fn record_upload(
+    db: &D1Database,
+    owner_id: Uuid,
+    size_bytes: u64,
+    now_ms: i64,
+) -> Result<()> {
     let owner = owner_id.to_string();
     worker::query!(
         db,
@@ -212,10 +226,12 @@ pub async fn record_upload(db: &D1Database, owner_id: Uuid, size_bytes: u64, now
 
 pub async fn is_job_processed(db: &D1Database, job_id: Uuid) -> Result<bool> {
     let id = job_id.to_string();
-    Ok(worker::query!(db, "SELECT job_id FROM processed_jobs WHERE job_id=?1", id)?
-        .first::<String>(Some("job_id"))
-        .await?
-        .is_some())
+    Ok(
+        worker::query!(db, "SELECT job_id FROM processed_jobs WHERE job_id=?1", id)?
+            .first::<String>(Some("job_id"))
+            .await?
+            .is_some(),
+    )
 }
 
 pub async fn complete_summary_job(

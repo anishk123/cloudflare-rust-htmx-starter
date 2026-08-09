@@ -1,4 +1,4 @@
-(()=>{'use strict';const DB='rust-htmx-starter';const STORE='outbox';let installPrompt=null;let waitingWorker=null;
+(()=>{'use strict';const DB='cloudflare-rust-htmx-starter';const STORE='outbox';let installPrompt=null;let waitingWorker=null;
 function statusEl(){return document.getElementById('connection-status')}function setStatus(){const el=statusEl();if(!el)return;el.textContent=navigator.onLine?'':'Offline · changes will sync';el.classList.toggle('offline',!navigator.onLine)}
 function openDb(){return new Promise((resolve,reject)=>{const r=indexedDB.open(DB,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(STORE))r.result.createObjectStore(STORE,{keyPath:'operation_id'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 async function put(op){const db=await openDb();await new Promise((res,rej)=>{const tx=db.transaction(STORE,'readwrite');tx.objectStore(STORE).put(op);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}

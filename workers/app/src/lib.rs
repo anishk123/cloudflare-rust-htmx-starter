@@ -1,5 +1,7 @@
-use starter_contracts::{contract_catalog_json, ApiError, CreateNoteRequest, JobV1, Note, NoteStatus, CONTRACT_VERSION};
-use starter_domain::{slugify, validate_create_note, verify_upload, ALLOWED_UPLOAD_TYPES};
+use starter_contracts::{
+    ApiError, CONTRACT_VERSION, CreateNoteRequest, JobV1, Note, NoteStatus, contract_catalog_json,
+};
+use starter_domain::{ALLOWED_UPLOAD_TYPES, slugify, validate_create_note, verify_upload};
 use starter_observability::log_event;
 use starter_shared::request_id;
 use uuid::Uuid;
@@ -26,7 +28,10 @@ fn secured(mut response: Response, request_id: &str, private: bool) -> Result<Re
     h.set("x-request-id", request_id)?;
     h.set("x-content-type-options", "nosniff")?;
     h.set("referrer-policy", "strict-origin-when-cross-origin")?;
-    h.set("permissions-policy", "camera=(), microphone=(), geolocation=()")?;
+    h.set(
+        "permissions-policy",
+        "camera=(), microphone=(), geolocation=()",
+    )?;
     h.set("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")?;
     h.set(
         "cache-control",
@@ -48,7 +53,8 @@ fn text(body: &str, content_type: &str) -> Result<Response> {
 fn binary(body: &[u8], content_type: &str) -> Result<Response> {
     let mut r = Response::from_bytes(body.to_vec())?;
     r.headers_mut().set("content-type", content_type)?;
-    r.headers_mut().set("cache-control", "public, max-age=86400")?;
+    r.headers_mut()
+        .set("cache-control", "public, max-age=86400")?;
     Ok(r)
 }
 
@@ -59,15 +65,22 @@ fn not_found() -> Result<Response> {
 /// Developer placeholder for the authentication boundary (see docs/AUTH.md):
 /// real auth (Cloudflare Access, OIDC, or cookie sessions) must populate this
 /// same per-request context. Until then the caller presents an `x-user-id`
-/// header, which is NOT a production credential.
-fn current_user(req: &Request) -> Result<Uuid> {
-    let raw = req
-        .headers()
-        .get("x-user-id")
-        .ok()
-        .flatten()
-        .ok_or_else(|| Error::RustError("missing x-user-id".into()))?;
-    Uuid::parse_str(&raw).map_err(|_| Error::RustError("invalid x-user-id".into()))
+/// header, which is NOT a production credential. In local dev only, an empty
+/// `DEV_USER_ID` var in wrangler.jsonc can be overridden via the ignored
+/// `.dev.vars` so the browser demo works without header injection — never set
+/// it in production.
+fn current_user(req: &Request, env: &Env) -> Result<Uuid> {
+    if let Some(raw) = req.headers().get("x-user-id").ok().flatten() {
+        return Uuid::parse_str(&raw).map_err(|_| Error::RustError("invalid x-user-id".into()));
+    }
+    if let Ok(var) = env.var("DEV_USER_ID") {
+        let raw = var.to_string();
+        if !raw.is_empty() {
+            return Uuid::parse_str(&raw)
+                .map_err(|_| Error::RustError("invalid DEV_USER_ID".into()));
+        }
+    }
+    Err(Error::RustError("missing x-user-id".into()))
 }
 
 fn unauthorized(request_id: &str) -> Result<Response> {
@@ -76,7 +89,11 @@ fn unauthorized(request_id: &str) -> Result<Response> {
         message: "authentication required".into(),
         request_id: request_id.into(),
     };
-    secured(Response::from_json(&body)?.with_status(401), request_id, true)
+    secured(
+        Response::from_json(&body)?.with_status(401),
+        request_id,
+        true,
+    )
 }
 
 const RATE_LIMIT_BINDING: &str = "RATE_LIMITER";
@@ -87,7 +104,11 @@ const RATE_LIMIT_BINDING: &str = "RATE_LIMITER";
 /// immediately — and `Ok(None)` when the request may proceed. Rate limits are
 /// local to the Cloudflare location serving the request, so this is a coarse
 /// abuse brake, not an exact accounting system.
-async fn enforce_rate_limit(ctx: &RouteContext<()>, key: String, request_id: &str) -> Result<Option<Response>> {
+async fn enforce_rate_limit(
+    ctx: &RouteContext<()>,
+    key: String,
+    request_id: &str,
+) -> Result<Option<Response>> {
     let limiter = ctx.rate_limiter(RATE_LIMIT_BINDING)?;
     let outcome = limiter.limit(key).await?;
     if outcome.success {
@@ -98,8 +119,12 @@ async fn enforce_rate_limit(ctx: &RouteContext<()>, key: String, request_id: &st
             message: "too many requests, please slow down".into(),
             request_id: request_id.into(),
         };
-        let mut response = secured(Response::from_json(&body)?.with_status(429), request_id, true)?;
-        response.headers_mut()?.set("retry-after", "60")?;
+        let mut response = secured(
+            Response::from_json(&body)?.with_status(429),
+            request_id,
+            true,
+        )?;
+        response.headers_mut().set("retry-after", "60")?;
         Ok(Some(response))
     }
 }
@@ -137,16 +162,25 @@ fn csrf_cookie_from(req: &Request) -> Option<String> {
 /// by comparing the cookie against the form field, never looked up.
 fn csrf_state(req: &Request) -> CsrfState {
     match csrf_cookie_from(req) {
-        Some(token) => CsrfState { token, minted: false },
-        None => CsrfState { token: mint_csrf_token(), minted: true },
+        Some(token) => CsrfState {
+            token,
+            minted: false,
+        },
+        None => CsrfState {
+            token: mint_csrf_token(),
+            minted: true,
+        },
     }
 }
 
 fn attach_csrf_cookie(mut response: Response, csrf: &CsrfState) -> Result<Response> {
     if csrf.minted {
-        response.headers_mut()?.set(
+        response.headers_mut().set(
             "set-cookie",
-            &format!("{CSRF_COOKIE}={}; Path=/; HttpOnly; SameSite=Lax; Secure", csrf.token),
+            &format!(
+                "{CSRF_COOKIE}={}; Path=/; HttpOnly; SameSite=Lax; Secure",
+                csrf.token
+            ),
         )?;
     }
     Ok(response)
@@ -158,18 +192,24 @@ fn attach_csrf_cookie(mut response: Response, csrf: &CsrfState) -> Result<Respon
 /// exactly when cookie-session auth is live; with the dev `x-user-id` header
 /// there is no cookie to protect, so the check is skipped. A cookie-carrying
 /// request whose body failed to parse fails closed (no token == no pass).
-fn csrf_guard(req: &Request, form: Option<&worker::FormData>, request_id: &str) -> Result<Option<Response>> {
+fn csrf_guard(
+    req: &Request,
+    form: Option<&worker::FormData>,
+    request_id: &str,
+) -> Result<Option<Response>> {
     let cookie_token = match csrf_cookie_from(req) {
         Some(t) => t,
         None => return Ok(None),
     };
-    let submitted = form
-        .and_then(|f| f.get("csrf_token"))
-        .and_then(|v| match v {
-            FormEntry::Field(s) => Some(s.as_str()),
+    // The token is a short hex string; cloning keeps this borrow-free.
+    let submitted = match form {
+        Some(f) => match f.get("csrf_token") {
+            Some(FormEntry::Field(s)) => Some(s.clone()),
             _ => None,
-        });
-    if starter_domain::csrf_token_valid(submitted, Some(&cookie_token)) {
+        },
+        None => None,
+    };
+    if starter_domain::csrf_token_valid(submitted.as_deref(), Some(&cookie_token)) {
         Ok(None)
     } else {
         let body = ApiError {
@@ -177,7 +217,11 @@ fn csrf_guard(req: &Request, form: Option<&worker::FormData>, request_id: &str) 
             message: "request token mismatch".into(),
             request_id: request_id.into(),
         };
-        Ok(Some(secured(Response::from_json(&body)?.with_status(403), request_id, true)?))
+        Ok(Some(secured(
+            Response::from_json(&body)?.with_status(403),
+            request_id,
+            true,
+        )?))
     }
 }
 
@@ -185,14 +229,28 @@ fn is_htmx(req: &Request) -> bool {
     req.headers().get("HX-Request").ok().flatten().as_deref() == Some("true")
 }
 
+/// Builds a 303 redirect with the usual security headers.
+///
+/// `Response::redirect*` cannot be used here: per the Fetch spec its headers
+/// have an "immutable" guard, so `secured()` (which mutates headers) throws
+/// "Can't modify immutable headers" in the Workers runtime. The Location
+/// header is set on a plain, mutable response instead.
+fn redirect_303(location: Url, request_id: &str) -> Result<Response> {
+    let mut r = Response::empty()?.with_status(303);
+    r.headers_mut().set("location", location.as_str())?;
+    secured(r, request_id, true)
+}
+
 fn redirect_home(req: &Request, request_id: &str) -> Result<Response> {
     let url = req.url()?.join("/")?;
-    secured(Response::redirect_with_status(url, 303)?, request_id, true)
+    redirect_303(url, request_id)
 }
 
 fn validation_response(message: &str, request_id: &str, htmx: bool) -> Result<Response> {
     let body = starter_templates::error_fragment(message).into_string();
-    let mut r = if htmx { Response::from_html(body)? } else {
+    let mut r = if htmx {
+        Response::from_html(body)?
+    } else {
         Response::from_html(starter_templates::error_page("Validation error", message))?
     };
     r = r.with_status(422);
@@ -201,7 +259,7 @@ fn validation_response(message: &str, request_id: &str, htmx: bool) -> Result<Re
 async fn create_note(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let request_id = request_id();
     let htmx = is_htmx(&req);
-    let owner = match current_user(&req) {
+    let owner = match current_user(&req, &ctx.env) {
         Ok(u) => u,
         Err(_) => return unauthorized(&request_id),
     };
@@ -256,10 +314,16 @@ async fn create_note(mut req: Request, ctx: RouteContext<()>) -> Result<Response
         &serde_json::json!({"noteId": persisted.id, "operationId": operation_id}),
     );
     if htmx {
-        let r = secured(Response::from_html(starter_templates::note_card(&persisted, &csrf.token).into_string())?, &request_id, true)?;
+        let r = secured(
+            Response::from_html(
+                starter_templates::note_card(&persisted, &csrf.token).into_string(),
+            )?,
+            &request_id,
+            true,
+        )?;
         attach_csrf_cookie(r, &csrf)
     } else {
-        let r = secured(Response::redirect_with_status(fallback, 303)?, &request_id, true)?;
+        let r = redirect_303(fallback, &request_id)?;
         attach_csrf_cookie(r, &csrf)
     }
 }
@@ -267,7 +331,7 @@ async fn create_note(mut req: Request, ctx: RouteContext<()>) -> Result<Response
 async fn summarize(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let request_id = request_id();
     let htmx = is_htmx(&req);
-    let owner = match current_user(&req) {
+    let owner = match current_user(&req, &ctx.env) {
         Ok(u) => u,
         Err(_) => return unauthorized(&request_id),
     };
@@ -298,14 +362,27 @@ async fn summarize(mut req: Request, ctx: RouteContext<()>) -> Result<Response> 
         job_id: Uuid::new_v4(),
         note_id: id,
     };
-    ctx.queue("JOBS")?.send(job).await?;
-    if htmx { attach_csrf_cookie(secured(Response::from_html(starter_templates::note_card(&note, &csrf.token).into_string())?, &request_id, true)?, &csrf) } else { redirect_home(&req, &request_id) }
+    ctx.env.queue("JOBS")?.send(job).await?;
+    if htmx {
+        attach_csrf_cookie(
+            secured(
+                Response::from_html(
+                    starter_templates::note_card(&note, &csrf.token).into_string(),
+                )?,
+                &request_id,
+                true,
+            )?,
+            &csrf,
+        )
+    } else {
+        redirect_home(&req, &request_id)
+    }
 }
 
 async fn publish(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let request_id = request_id();
     let htmx = is_htmx(&req);
-    let owner = match current_user(&req) {
+    let owner = match current_user(&req, &ctx.env) {
         Ok(u) => u,
         Err(_) => return unauthorized(&request_id),
     };
@@ -325,12 +402,25 @@ async fn publish(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let Some(note) = starter_database::publish_note(&db, id, owner, now_ms()).await? else {
         return not_found();
     };
-    if htmx { attach_csrf_cookie(secured(Response::from_html(starter_templates::note_card(&note, &csrf.token).into_string())?, &request_id, true)?, &csrf) } else { redirect_home(&req, &request_id) }
+    if htmx {
+        attach_csrf_cookie(
+            secured(
+                Response::from_html(
+                    starter_templates::note_card(&note, &csrf.token).into_string(),
+                )?,
+                &request_id,
+                true,
+            )?,
+            &csrf,
+        )
+    } else {
+        redirect_home(&req, &request_id)
+    }
 }
 
 async fn upload(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let request_id = request_id();
-    let owner = match current_user(&req) {
+    let owner = match current_user(&req, &ctx.env) {
         Ok(u) => u,
         Err(_) => return unauthorized(&request_id),
     };
@@ -351,7 +441,7 @@ async fn upload(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     if size > 10 * 1024 * 1024 {
         return Response::error("file exceeds 10 MiB", 413);
     }
-    if !ALLOWED_UPLOAD_TYPES.contains(&content_type) {
+    if !ALLOWED_UPLOAD_TYPES.iter().any(|v| *v == content_type) {
         return Response::error("unsupported file type", 415);
     }
     let bytes = file.bytes().await?;
@@ -363,19 +453,22 @@ async fn upload(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     // mislabel one binary format as another. Text formats get UTF-8/NUL/HTML
     // heuristics since they have no reliable signature.
     if let Err(err) = verify_upload(&content_type, &bytes) {
-        return Response::error(&err.to_string(), 415);
+        return Response::error(err.to_string(), 415);
     }
     // Per-owner quota: reject before the R2 write so over-quota owners never
     // store anything. Check-then-write is not a strict serialization — two
     // concurrent uploads can both pass — which the 100 MiB headroom absorbs.
     let db = ctx.d1("DB")?;
     let used = starter_database::upload_bytes_used(&db, owner).await?;
-    if !starter_domain::within_upload_quota(used, size) {
+    if !starter_domain::within_upload_quota(used, size as u64) {
         return Response::error("upload quota exceeded", 413);
     }
     let key = format!("attachments/{}/{}", owner, Uuid::new_v4());
-    ctx.bucket("ATTACHMENTS")?.put(&key, bytes).execute().await?;
-    starter_database::record_upload(&db, owner, size, now_ms()).await?;
+    ctx.bucket("ATTACHMENTS")?
+        .put(&key, bytes)
+        .execute()
+        .await?;
+    starter_database::record_upload(&db, owner, size as u64, now_ms()).await?;
     let response = starter_contracts::AttachmentMetadataV1 {
         contract_version: CONTRACT_VERSION,
         key,
@@ -408,33 +501,48 @@ async fn note_page(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     )
 }
 
-async fn note_json(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+/// Serves a published note as JSON or Markdown from one route.
+///
+/// matchit 0.7 (pinned by worker 0.8.5) rejects a second param-with-suffix
+/// route at the same position, so `/notes/:id.json` and `/notes/:id.md`
+/// cannot both be registered ("failed to register ... conflict with
+/// previously registered route"). `/notes/:id.ext` captures the whole
+/// segment (`<uuid>.json` / `<uuid>.md`) and we dispatch on the extension.
+async fn note_data(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let request_id = request_id();
-    let Some(note) = published_note(&ctx).await? else {
+    let Some((id_str, ext)) = ctx.param("id.ext").and_then(|s| s.rsplit_once('.')) else {
         return not_found();
     };
-    secured(Response::from_json(&note)?, &request_id, false)
-}
-
-async fn note_markdown(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let request_id = request_id();
-    let Some(note) = published_note(&ctx).await? else {
+    let Ok(id) = Uuid::parse_str(id_str) else {
         return not_found();
     };
-    let body = format!(
-        "# {}\n\n{}\n\n{}",
-        note.title,
-        note.body,
-        note.summary
-            .as_ref()
-            .map(|s| format!("## Summary\n\n{s}"))
-            .unwrap_or_default()
-    );
-    secured(
-        text(&body, "text/markdown; charset=utf-8")?,
-        &request_id,
-        false,
-    )
+    let db = ctx.d1("DB")?;
+    let Some(note) = starter_database::find_note(&db, id)
+        .await?
+        .filter(|n| n.status == NoteStatus::Published)
+    else {
+        return not_found();
+    };
+    match ext {
+        "json" => secured(Response::from_json(&note)?, &request_id, false),
+        "md" => {
+            let body = format!(
+                "# {}\n\n{}\n\n{}",
+                note.title,
+                note.body,
+                note.summary
+                    .as_ref()
+                    .map(|s| format!("## Summary\n\n{s}"))
+                    .unwrap_or_default()
+            );
+            secured(
+                text(&body, "text/markdown; charset=utf-8")?,
+                &request_id,
+                false,
+            )
+        }
+        _ => not_found(),
+    }
 }
 
 #[event(fetch)]
@@ -442,7 +550,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Router::new()
         .get_async("/", |req, ctx| async move {
             let request_id = request_id();
-            let owner = match current_user(&req) {
+            let owner = match current_user(&req, &ctx.env) {
                 Ok(u) => u,
                 Err(_) => return unauthorized(&request_id),
             };
@@ -460,8 +568,7 @@ pub async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/notes/:id/publish", publish)
         .post_async("/upload", upload)
         .get_async("/notes/:id/:slug", note_page)
-        .get_async("/notes/:id.json", note_json)
-        .get_async("/notes/:id.md", note_markdown)
+        .get_async("/notes/:id.ext", note_data)
         .get("/contracts", |_req, _ctx| {
             let rid = request_id();
             secured(Response::from_json(&contract_catalog_json())?, &rid, false)
