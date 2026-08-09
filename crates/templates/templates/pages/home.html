@@ -1,0 +1,68 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<header class="page-heading">
+  <div>
+    <p class="eyebrow">Cloudflare application starter</p>
+    <h1>Evidence Notes</h1>
+    <p class="lede">Capture durable notes, process work in the background, and publish faithful HTML, Markdown, and JSON from one Rust model.</p>
+  </div>
+  <span class="badge success"><span class="status-dot" aria-hidden="true"></span>Systems ready</span>
+</header>
+
+<section class="workspace-grid" aria-label="Note workspace">
+  <article class="card elevated">
+    <div class="card-header">
+      <div>
+        <p class="eyebrow">New evidence</p>
+        <h2>Create a note</h2>
+      </div>
+      <span class="badge neutral">Offline ready</span>
+    </div>
+    <form method="post" action="/notes" hx-post="/notes" hx-target="#notes" hx-swap="afterbegin" hx-target-422="#note-form-errors" data-offline-form="create-note">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div id="note-form-errors" class="form-errors" role="alert" aria-live="assertive"></div>
+      <div class="field">
+        <label for="title">Title</label>
+        <input id="title" name="title" required maxlength="120" autocomplete="off" placeholder="What did you learn?">
+        <small>Use a concise, descriptive title.</small>
+      </div>
+      <div class="field">
+        <label for="body">Evidence</label>
+        <textarea id="body" name="body" required maxlength="20000" rows="7" placeholder="Record the observation, source, or decision…"></textarea>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="button primary">Save note</button>
+        <span class="hint">Offline submissions remain local until connectivity returns.</span>
+      </div>
+    </form>
+  </article>
+
+  <aside class="card feature-card">
+    <p class="eyebrow">Built into the foundation</p>
+    <h2>Small stack, serious boundaries.</h2>
+    <p>Rust renders the document and fragments. Native HTML owns behavior. HTMX improves the interaction without becoming the application.</p>
+    <ul class="feature-list">
+      <li><span aria-hidden="true">✓</span><span>D1 persistence and prepared SQL</span></li>
+      <li><span aria-hidden="true">✓</span><span>R2 attachment validation</span></li>
+      <li><span aria-hidden="true">✓</span><span>Idempotent Queue consumers</span></li>
+      <li><span aria-hidden="true">✓</span><span>Published-only SEO and AEO</span></li>
+    </ul>
+    <details>
+      <summary>Why native HTML first?</summary>
+      <p>Links, forms, validation, dialogs, disclosure, and progress work before custom JavaScript is considered.</p>
+    </details>
+  </aside>
+</section>
+
+<section class="section-heading" aria-labelledby="notes-heading">
+  <div>
+    <p class="eyebrow">Workspace</p>
+    <h2 id="notes-heading">Notes</h2>
+  </div>
+  <span class="hint">Newest first</span>
+</section>
+<div id="notes" class="stack" data-empty-label="No notes yet. Create the first one above.">
+  {% for note in notes %}{% include "fragments/note_card.html" %}{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+<article class="card note-card" id="note-{{ note.id }}" data-js-ready>
+  <div class="note-content">
+    <div class="note-heading">
+      <span class="badge {% if note.is_published %}success{% else %}neutral{% endif %}">{{ note.status_label }}</span>
+      <span class="hint">Version {{ note.version }}</span>
+    </div>
+    <h3>{{ note.title }}</h3>
+    <p class="note-body">{{ note.body }}</p>
+    {% match note.summary %}
+      {% when Some with (summary) %}<div class="callout"><strong>Summary</strong><p>{{ summary }}</p></div>
+      {% when None %}
+    {% endmatch %}
+  </div>
+  <div class="note-actions">
+    <form method="post" action="{{ note.summarize_url }}" hx-post="{{ note.summarize_url }}" hx-target="#note-{{ note.id }}" hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button secondary compact">Queue summary</button>
+    </form>
+    {% if note.is_draft %}
+    <form method="post" action="{{ note.publish_url }}" hx-post="{{ note.publish_url }}" hx-target="#note-{{ note.id }}" hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="button primary compact">Publish</button>
+    </form>
+    {% endif %}
+    {% if note.is_published %}
+    <nav class="inline-links" aria-label="Published representations">
+      <a href="{{ note.public_html_url }}">HTML</a>
+      <a href="{{ note.markdown_url }}">Markdown</a>
+      <a href="{{ note.json_url }}">JSON</a>
+    </nav>
+    {% endif %}
+  </div>
+</article>

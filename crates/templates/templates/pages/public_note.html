@@ -1,0 +1,21 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<article class="published-note">
+  <header>
+    <p class="eyebrow">Published evidence</p>
+    <h1>{{ note.title }}</h1>
+    <div class="published-meta"><span class="badge success">Published</span><span>Version {{ note.version }}</span></div>
+  </header>
+  <div class="prose"><p>{{ note.body }}</p></div>
+  {% match note.summary %}
+    {% when Some with (summary) %}<aside class="callout"><strong>Summary</strong><p>{{ summary }}</p></aside>
+    {% when None %}
+  {% endmatch %}
+  <footer class="published-footer">
+    <span>Use the same canonical record as</span>
+    <a href="{{ note.markdown_url }}">Markdown</a>
+    <a href="{{ note.json_url }}">JSON</a>
+  </footer>
+</article>
+{% endblock %}
