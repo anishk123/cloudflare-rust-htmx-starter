@@ -629,13 +629,15 @@ fn template_check() -> Result<(), String> {
         "Cargo.toml",
         ".cargo/config.toml",
         "crates/xtask/src/main.rs",
-        "public/app.js",
-        "public/app.css",
+        "public/assets/app.js",
+        "public/assets/app.css",
         "public/sw.js",
+        "public/offline.html",
+        "public/_headers",
         "public/manifest.webmanifest",
-        "public/vendor/htmx.min.js",
-        "public/vendor/response-targets.js",
-        "public/vendor/pico.min.css",
+        "public/assets/vendor/htmx-2.0.10.min.js",
+        "public/assets/vendor/response-targets-2.0.4.js",
+        "crates/templates/templates/layouts/base.html",
         "workers/app/wrangler.jsonc",
         "workers/jobs/wrangler.jsonc",
         "docs/AUTH.md",
@@ -648,14 +650,17 @@ fn template_check() -> Result<(), String> {
             return Err(format!("required starter file missing: {f}"));
         }
     }
-    let app = fs::read_to_string("public/app.js").map_err(|e| e.to_string())?;
+    let app = fs::read_to_string("public/assets/app.js").map_err(|e| e.to_string())?;
     if app.contains("DOMContentLoaded") {
         return Err("app.js must not rely on DOMContentLoaded component listeners; use event delegation/HTMX lifecycle hooks".into());
     }
     if !app.contains("htmx.onLoad") || !app.contains("document.addEventListener") {
         return Err("app.js must demonstrate both HTMX lifecycle-safe initialization and document-level event delegation".into());
     }
-    let tpl = fs::read_to_string("crates/templates/src/lib.rs").map_err(|e| e.to_string())?;
+    let tpl = fs::read_to_string("crates/templates/templates/layouts/base.html")
+        .map_err(|e| e.to_string())?
+        + &fs::read_to_string("crates/templates/templates/pages/home.html")
+            .map_err(|e| e.to_string())?;
     for needle in [
         "hx-ext=\"response-targets\"",
         "details",
@@ -674,6 +679,35 @@ fn template_check() -> Result<(), String> {
     }
     if !sw.contains("SKIP_WAITING") || !app.contains("data-update-pwa") {
         return Err("PWA must include an explicit update lifecycle".into());
+    }
+    if sw.contains("csrf") || !sw.contains("/offline.html") {
+        return Err("service worker must use the static, token-free offline fallback".into());
+    }
+    let css = fs::read("public/assets/app.css").map_err(|e| e.to_string())?;
+    if css.len() > 24 * 1024 {
+        return Err(format!(
+            "starter-owned CSS exceeds 24 KiB budget: {} bytes",
+            css.len()
+        ));
+    }
+    if fs::metadata("public/assets/app.js")
+        .map_err(|e| e.to_string())?
+        .len()
+        > 8 * 1024
+    {
+        return Err("starter-owned JavaScript exceeds 8 KiB budget".into());
+    }
+    let cargo = fs::read_to_string("Cargo.toml").map_err(|e| e.to_string())?;
+    if cargo.contains("maud") || Path::new("public/vendor/pico.min.css").exists() {
+        return Err("Maud and Pico must be absent from the starter".into());
+    }
+    let wrangler = fs::read_to_string("workers/app/wrangler.jsonc").map_err(|e| e.to_string())?;
+    if !wrangler.contains("\"assets\"") || !wrangler.contains("\"cache\"") {
+        return Err("app Worker must configure Static Assets and Workers Caching".into());
+    }
+    let headers = fs::read_to_string("public/_headers").map_err(|e| e.to_string())?;
+    if !headers.contains("immutable") || !headers.contains("Content-Security-Policy") {
+        return Err("static assets must define immutable vendor caching and CSP".into());
     }
     let manifest: serde_json::Value = serde_json::from_str(
         &fs::read_to_string("public/manifest.webmanifest").map_err(|e| e.to_string())?,

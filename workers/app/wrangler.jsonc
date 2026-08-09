@@ -3,6 +3,13 @@
   "main": "build/worker/shim.mjs",
   "compatibility_date": "2026-08-08",
   "workers_dev": true,
+  "assets": {
+    "directory": "../../public",
+    "run_worker_first": false
+  },
+  "cache": {
+    "enabled": true
+  },
   "build": {
     "command": "worker-build --release",
     "cwd": "workers/app"

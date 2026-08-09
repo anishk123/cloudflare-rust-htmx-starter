@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f1420" media="(prefers-color-scheme: dark)">
+    <meta name="robots" content="noindex">
+    <title>Offline · Evidence Notes</title>
+    <link rel="stylesheet" href="/assets/app.css">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <main class="page-container">
+      <section class="centered-state">
+        <div class="state-icon" aria-hidden="true">↯</div>
+        <p class="eyebrow">Offline capture</p>
+        <h1>You are offline.</h1>
+        <p class="lede">Capture the note now. It stays in this browser and receives fresh session protection when connectivity returns.</p>
+      </section>
+      <form class="card elevated" method="post" action="/notes" data-offline-form="create-note">
+        <div class="field">
+          <label for="offline-title">Title</label>
+          <input id="offline-title" name="title" required maxlength="120" autocomplete="off" placeholder="What did you learn?">
+        </div>
+        <div class="field">
+          <label for="offline-body">Evidence</label>
+          <textarea id="offline-body" name="body" required maxlength="20000" rows="7" placeholder="Record the observation, source, or decision…"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="button primary">Save on this device</button>
+          <span id="connection-status" class="connection-pill offline" role="status">Offline · changes will sync</span>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
