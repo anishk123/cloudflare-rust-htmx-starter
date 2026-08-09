@@ -1,0 +1,19 @@
+[package]
+name = "starter-jobs-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+worker.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+starter-contracts.workspace = true
+starter-domain.workspace = true
+starter-database.workspace = true
+starter-observability.workspace = true

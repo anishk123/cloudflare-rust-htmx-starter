@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+  "workers/app",
+  "workers/jobs",
+  "crates/contracts",
+  "crates/domain",
+  "crates/database",
+  "crates/templates",
+  "crates/observability",
+  "crates/shared",
+  "crates/xtask",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.97.1"
+license = "MIT"
+
+[workspace.dependencies]
+worker = { version = "=0.8.5", features = ["d1", "queue"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.145"
+schemars = { version = "=1.0.4", features = ["uuid1"] }
+maud = "=0.27.0"
+uuid = { version = "=1.18.1", features = ["v4", "serde", "js"] }
+thiserror = "=2.0.17"
+
+starter-contracts = { path = "crates/contracts" }
+starter-domain = { path = "crates/domain" }
+starter-database = { path = "crates/database" }
+starter-templates = { path = "crates/templates" }
+starter-observability = { path = "crates/observability" }
+starter-shared = { path = "crates/shared" }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

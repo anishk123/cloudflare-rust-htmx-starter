@@ -1,0 +1,12 @@
+[package]
+name = "starter-templates"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+maud.workspace = true
+serde_json.workspace = true
+starter-contracts.workspace = true
+starter-domain.workspace = true

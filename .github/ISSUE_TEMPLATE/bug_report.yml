@@ -1,0 +1,15 @@
+name: Bug report
+description: Report a reproducible starter defect.
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Include exact commands and output.
+    validations: { required: true }
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Rust, Node, Wrangler, OS/browser versions.
+    validations: { required: true }

@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install worker-build
+        run: cargo install worker-build --locked --version 0.8.5
+      - name: Vendor pinned browser assets
+        run: cargo xtask vendor
+      - name: Template checks
+        run: cargo xtask check
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy — native tooling
+        run: cargo clippy -p xtask --all-targets -- -D warnings
+      - name: Clippy — Worker/Wasm crates
+        run: cargo clippy --workspace --exclude xtask --target wasm32-unknown-unknown -- -D warnings
+      - name: Unit tests — pure/native crates
+        run: cargo test -p starter-contracts -p starter-domain -p starter-templates -p starter-shared -p xtask
+      - name: Wasm check — Worker application crates
+        run: cargo check --workspace --exclude xtask --target wasm32-unknown-unknown
+      - name: Build app Worker
+        run: cd workers/app && worker-build --release
+      - name: Build jobs Worker
+        run: cd workers/jobs && worker-build --release
+      - name: Validate D1 migrations with SQLite
+        run: |
+          for f in $(ls migrations/*.sql | sort); do sqlite3 /tmp/starter.db < "$f"; done
+          sqlite3 /tmp/starter.db ".schema"
+      - name: Wrangler dry-run app config
+        run: npx --yes wrangler@4.114.0 deploy -c workers/app/wrangler.jsonc --dry-run --outdir /tmp/wrangler-app
+      - name: Wrangler dry-run jobs config
+        run: npx --yes wrangler@4.114.0 deploy -c workers/jobs/wrangler.jsonc --dry-run --outdir /tmp/wrangler-jobs
+      - name: Browser JS syntax
+        run: |
+          node --check public/app.js
+          node --check public/sw.js
+          node --check public/vendor/response-targets.js
+      - name: Local end-to-end smoke
+        run: cargo xtask e2e
+      - name: Generator smoke
+        run: cargo xtask smoke

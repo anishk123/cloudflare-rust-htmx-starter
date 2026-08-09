@@ -1,0 +1,36 @@
+{
+  "name": "rust-htmx-starter-jobs",
+  "main": "build/worker/shim.mjs",
+  "compatibility_date": "2026-08-08",
+  "build": {
+    "command": "worker-build --release"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rust-htmx-starter-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "ATTACHMENTS",
+      "bucket_name": "rust-htmx-starter-attachments"
+    }
+  ],
+  "queues": {
+    "consumers": [
+      {
+        "queue": "rust-htmx-starter-jobs",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "dead_letter_queue": "rust-htmx-starter-jobs-dlq"
+      }
+    ]
+  },
+  "observability": {
+    "enabled": true
+  }
+}
