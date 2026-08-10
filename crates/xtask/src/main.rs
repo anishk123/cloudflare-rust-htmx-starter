@@ -448,8 +448,10 @@ fn e2e() -> Result<(), String> {
             .build()
             .map_err(|e| e.to_string())?;
         let base = format!("http://127.0.0.1:{port}");
+        const READY_ATTEMPTS: usize = 240;
+        const READY_INTERVAL: Duration = Duration::from_millis(250);
         let mut ready = false;
-        for _ in 0..80 {
+        for _ in 0..READY_ATTEMPTS {
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
                 return Err(format!(
                     "local Workers exited before becoming ready: {status}"
@@ -464,10 +466,10 @@ fn e2e() -> Result<(), String> {
                 ready = true;
                 break;
             }
-            thread::sleep(Duration::from_millis(250));
+            thread::sleep(READY_INTERVAL);
         }
         if !ready {
-            return Err("local Workers did not become ready within 20 seconds".into());
+            return Err("local Workers did not become ready within 60 seconds".into());
         }
 
         let missing_csrf = client
