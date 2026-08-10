@@ -32,9 +32,7 @@ pub async fn main(req: Request, env: Env, _context: Context) -> Result<Response>
             routes::system::robots(&req, &request_id())
         })
         .get_async("/sitemap.xml", routes::system::sitemap)
-        .get("/llms.txt", |_req, _context| {
-            routes::system::llms(&request_id())
-        })
+        .get_async("/llms.txt", routes::system::llms)
         .get("/design-system", |req, _context| {
             routes::system::design_system(&req, &request_id())
         })

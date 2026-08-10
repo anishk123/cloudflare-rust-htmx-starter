@@ -475,12 +475,19 @@ fn e2e() -> Result<(), String> {
             return Err("local Workers did not become ready within 20 seconds".into());
         }
 
-        let home = client
+        let home_response = client
             .get(format!("{base}/"))
             .send()
-            .map_err(|e| e.to_string())?
-            .text()
             .map_err(|e| e.to_string())?;
+        let home_cache = home_response
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        if home_cache != "no-store" {
+            return Err(format!("private home must be no-store, got {home_cache:?}"));
+        }
+        let home = home_response.text().map_err(|e| e.to_string())?;
         if !home.contains("Evidence Notes") {
             return Err("home page smoke failed".into());
         }
@@ -537,7 +544,7 @@ fn e2e() -> Result<(), String> {
                 .map_err(|e| e.to_string())?
                 .text()
                 .map_err(|e| e.to_string())?;
-            if body.contains("Summary:") {
+            if body.contains("<strong>Summary</strong>") {
                 summarized = true;
                 break;
             }
@@ -564,6 +571,60 @@ fn e2e() -> Result<(), String> {
         let body = public.text().map_err(|e| e.to_string())?;
         if !body.contains("\"status\":\"published\"") {
             return Err("public JSON did not expose published status".into());
+        }
+
+        let public_html = client
+            .get(format!("{base}/notes/{note_id}/e2e-note"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        let public_cache = public_html
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        if !public_cache.starts_with("public") {
+            return Err(format!(
+                "published HTML must be explicitly public, got {public_cache:?}"
+            ));
+        }
+        let public_html = public_html.text().map_err(|e| e.to_string())?;
+        if !public_html.contains(&format!(
+            "rel=\"canonical\" href=\"{base}/notes/{note_id}/e2e-note\""
+        )) {
+            return Err("published HTML canonical URL was not absolute".into());
+        }
+
+        let robots = client
+            .get(format!("{base}/robots.txt"))
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .text()
+            .map_err(|e| e.to_string())?;
+        if !robots.contains(&format!("Sitemap: {base}/sitemap.xml")) {
+            return Err("robots.txt did not advertise an absolute sitemap URL".into());
+        }
+
+        let sitemap = client
+            .get(format!("{base}/sitemap.xml"))
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .text()
+            .map_err(|e| e.to_string())?;
+        if !sitemap.contains("<lastmod>") {
+            return Err("sitemap did not include lastmod metadata".into());
+        }
+
+        let llms = client
+            .get(format!("{base}/llms.txt"))
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .text()
+            .map_err(|e| e.to_string())?;
+        if !llms.contains(&format!("/notes/{note_id}.md")) {
+            return Err("llms.txt did not list the published Markdown route".into());
         }
 
         println!("local end-to-end smoke passed");

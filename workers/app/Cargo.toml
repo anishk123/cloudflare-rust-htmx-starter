@@ -13,6 +13,7 @@ worker.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+time.workspace = true
 starter-contracts.workspace = true
 starter-domain.workspace = true
 starter-database.workspace = true

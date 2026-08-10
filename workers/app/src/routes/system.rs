@@ -1,6 +1,7 @@
 use starter_contracts::contract_catalog_json;
 use starter_domain::slugify;
 use starter_shared::request_id;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use worker::{Error, Request, Response, Result, RouteContext};
 
 use crate::http::{CachePolicy, redirect_303, secured, text};
@@ -50,9 +51,10 @@ pub(crate) async fn sitemap(req: Request, context: RouteContext<()>) -> Result<R
     let mut urls = format!("<url><loc>{origin}/</loc></url>");
     for note in notes {
         urls.push_str(&format!(
-            "<url><loc>{origin}/notes/{}/{}</loc></url>",
+            "<url><loc>{origin}/notes/{}/{}</loc><lastmod>{}</lastmod></url>",
             note.id,
-            slugify(&note.title)
+            slugify(&note.title),
+            rfc3339_from_millis(note.updated_at_ms),
         ));
     }
     let xml = format!(
@@ -65,15 +67,43 @@ pub(crate) async fn sitemap(req: Request, context: RouteContext<()>) -> Result<R
     )
 }
 
-pub(crate) fn llms(request_id: &str) -> Result<Response> {
+pub(crate) async fn llms(req: Request, context: RouteContext<()>) -> Result<Response> {
+    let request_id = request_id();
+    let origin = req.url()?.origin().ascii_serialization();
+    let notes = starter_database::list_published_notes(&context.d1("DB")?).await?;
+    let mut body = String::from(
+        "# Rust + HTMX Starter\n\n> Fast, progressively enhanced applications on Cloudflare with Rust, Askama, and HTMX.\n\n## Published notes\n",
+    );
+    if notes.is_empty() {
+        body.push_str("\nNo notes have been published yet.\n");
+    }
+    for note in notes {
+        let id = note.id;
+        let label = markdown_label(&note.title);
+        body.push_str(&format!(
+            "\n- [{label}]({origin}/notes/{id}/{})\n  - [Markdown]({origin}/notes/{id}.md)\n  - [JSON]({origin}/notes/{id}.json)\n",
+            slugify(&note.title)
+        ));
+    }
     secured(
-        text(
-            "# Rust + HTMX Starter\n\nA lightweight Cloudflare starter demonstrating HTML, Markdown, JSON, PWA/offline sync, D1, R2, and Queues.\n",
-            "text/plain; charset=utf-8",
-        )?,
-        request_id,
+        text(&body, "text/plain; charset=utf-8")?,
+        &request_id,
         CachePolicy::PublicDiscovery,
     )
+}
+
+fn rfc3339_from_millis(value: i64) -> String {
+    OffsetDateTime::from_unix_timestamp_nanos(i128::from(value) * 1_000_000)
+        .ok()
+        .and_then(|timestamp| timestamp.format(&Rfc3339).ok())
+        .unwrap_or_else(|| "1970-01-01T00:00:00Z".into())
+}
+
+fn markdown_label(value: &str) -> String {
+    value
+        .replace(['\r', '\n'], " ")
+        .replace('[', "\\[")
+        .replace(']', "\\]")
 }
 
 pub(crate) fn design_system(req: &Request, request_id: &str) -> Result<Response> {
