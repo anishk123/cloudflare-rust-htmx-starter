@@ -4,6 +4,7 @@ The starter pins browser dependencies and serves them from the Worker origin rat
 
 - HTMX 2.0.10 — Zero-Clause BSD — https://github.com/bigskysoftware/htmx
 - HTMX response-targets 2.0.4 — official HTMX extension — https://htmx.org/extensions/response-targets/
-- Pico CSS 2.1.1 — MIT — https://github.com/picocss/pico
+
+`public/assets/app.css`, `public/assets/app.js`, and `public/sw.js` are starter-owned source files, not vendored frameworks.
 
 Before redistributing a modified third-party asset, preserve the upstream copyright/license notices supplied with that asset/package.

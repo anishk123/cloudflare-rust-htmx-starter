@@ -8,7 +8,7 @@ const WRANGLER_VERSION: &str = "4.120.0";
 const WORKER_BUILD_VERSION: &str = "0.8.5";
 const HTMX_VERSION: &str = "2.0.10";
 const RESPONSE_TARGETS_VERSION: &str = "2.0.4";
-const PICO_VERSION: &str = "2.1.1";
+const ASKAMA_VERSION: &str = "0.16.0";
 
 fn main() {
     if let Err(e) = run() {
@@ -54,7 +54,7 @@ fn help() {
 
 Canonical commands:
   cargo xtask bootstrap             Install/check prerequisites + vendor pinned browser assets
-  cargo xtask vendor                Refresh pinned HTMX/Pico/extension assets
+  cargo xtask vendor                Refresh pinned HTMX/extension assets
   cargo xtask dev                   Run both Workers locally with persistent D1/R2/Queues
   cargo xtask test                  Run Rust tests + static browser/template checks
   cargo xtask e2e                   Boot local Workers and smoke D1 + Queue + public routes
@@ -85,7 +85,7 @@ application runtime or source-language dependency.
 }
 fn versions() {
     println!(
-        "workers-rs {WORKER_BUILD_VERSION}\nHTMX {HTMX_VERSION}\nresponse-targets {RESPONSE_TARGETS_VERSION}\nPico CSS {PICO_VERSION}\nMaud 0.27.0\nWrangler {WRANGLER_VERSION}\nRust >=1.97.1"
+        "workers-rs {WORKER_BUILD_VERSION}\nAskama {ASKAMA_VERSION}\nHTMX {HTMX_VERSION}\nresponse-targets {RESPONSE_TARGETS_VERSION}\nWrangler {WRANGLER_VERSION}\nRust >=1.97.1"
     );
 }
 
@@ -157,32 +157,25 @@ fn vendor_assets() -> Result<(), String> {
     let assets = [
         (
             format!("https://cdn.jsdelivr.net/npm/htmx.org@{HTMX_VERSION}/dist/htmx.min.js"),
-            "public/vendor/htmx.min.js",
+            "public/assets/vendor/htmx-2.0.10.min.js",
             format!("version:\"{HTMX_VERSION}\""),
         ),
         (
             format!(
                 "https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@{RESPONSE_TARGETS_VERSION}"
             ),
-            "public/vendor/response-targets.js",
+            "public/assets/vendor/response-targets-2.0.4.js",
             "response-targets".to_string(),
         ),
-        (
-            format!("https://cdn.jsdelivr.net/npm/@picocss/pico@{PICO_VERSION}/css/pico.min.css"),
-            "public/vendor/pico.min.css",
-            "Pico CSS".to_string(),
-        ),
     ];
-    fs::create_dir_all("public/vendor").map_err(|e| e.to_string())?;
+    fs::create_dir_all("public/assets/vendor").map_err(|e| e.to_string())?;
     let client = reqwest::blocking::Client::builder()
         .user_agent("cloudflare-rust-htmx-starter-xtask")
         .build()
         .map_err(|e| e.to_string())?;
     for (url, path, marker) in assets {
         let current = fs::read_to_string(path).unwrap_or_default();
-        if current.contains(&marker)
-            && !(path.ends_with("pico.min.css") && current.contains("compatible semantic baseline"))
-        {
+        if current.contains(&marker) {
             continue;
         }
         println!("vendoring {url}");
@@ -318,9 +311,9 @@ fn verify() -> Result<(), String> {
     }
     if command_exists("node") {
         for js in [
-            "public/app.js",
+            "public/assets/app.js",
             "public/sw.js",
-            "public/vendor/response-targets.js",
+            "public/assets/vendor/response-targets-2.0.4.js",
         ] {
             let mut n = Command::new("node");
             n.args(["--check", js]);
@@ -699,12 +692,17 @@ fn template_check() -> Result<(), String> {
         "public/assets/vendor/htmx-2.0.10.min.js",
         "public/assets/vendor/response-targets-2.0.4.js",
         "crates/templates/templates/layouts/base.html",
+        "crates/templates/templates/pages/design_system.html",
+        "workers/app/src/routes/notes.rs",
+        "workers/app/src/routes/public.rs",
+        "workers/app/src/routes/system.rs",
         "workers/app/wrangler.jsonc",
         "workers/jobs/wrangler.jsonc",
         "docs/AUTH.md",
         "docs/SECRETS.md",
         ".github/workflows/ci.yml",
         ".github/workflows/security.yml",
+        ".github/lighthouse/budgets.json",
     ];
     for f in required {
         if !Path::new(f).exists() {
@@ -717,6 +715,12 @@ fn template_check() -> Result<(), String> {
     }
     if !app.contains("htmx.onLoad") || !app.contains("document.addEventListener") {
         return Err("app.js must demonstrate both HTMX lifecycle-safe initialization and document-level event delegation".into());
+    }
+    if !app.contains("fetch('/session/csrf'") {
+        return Err("offline replay must fetch a current CSRF token before synchronization".into());
+    }
+    if app.contains("payload.csrf_token") || app.contains("csrf_token:csrf") {
+        return Err("IndexedDB operations must never persist CSRF credentials".into());
     }
     let tpl = fs::read_to_string("crates/templates/templates/layouts/base.html")
         .map_err(|e| e.to_string())?
@@ -834,9 +838,38 @@ fn template_check() -> Result<(), String> {
         "R2",
         "Queues",
         "AGENTS.md",
+        "Askama",
+        "/design-system",
+        "Cloudflare Static Assets",
     ] {
         if !readme.contains(needle) {
             return Err(format!("README missing required guidance: {needle}"));
+        }
+    }
+    for path in [
+        "README.md",
+        "AGENTS.md",
+        "docs/ARCHITECTURE.md",
+        "docs/AUTH.md",
+        "docs/EXTENDING.md",
+        "THIRD_PARTY_NOTICES.md",
+        ".github/dependabot.yml",
+        ".github/workflows/ci.yml",
+    ] {
+        let source = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        for banned in [
+            "Maud",
+            "maud",
+            "Pico CSS",
+            "pico.min.css",
+            "public/app.js",
+            "public/vendor/",
+        ] {
+            if source.contains(banned) {
+                return Err(format!(
+                    "obsolete starter reference {banned:?} remains in {path}"
+                ));
+            }
         }
     }
     println!("template checks passed");
@@ -935,6 +968,7 @@ fn replace_all(root: &Path, name: &str, title: &str, github: Option<&str>) -> Re
     // generated names (e.g. `cloudflare-my-product-app`).
     let replacements = [
         ("cloudflare-rust-htmx-starter", name),
+        ("Rust + HTMX Cloudflare Starter", title),
         ("Rust + HTMX Starter", title),
         ("rust-htmx-starter", name),
     ];
@@ -955,6 +989,7 @@ fn replace_all(root: &Path, name: &str, title: &str, github: Option<&str>) -> Re
                     "js",
                     "yml",
                     "yaml",
+                    "html",
                     "webmanifest",
                     "txt",
                     "example",
@@ -1049,6 +1084,23 @@ fn template_smoke() -> Result<(), String> {
     }
     if dir.join(".cloudflare.env").exists() || dir.join(".dev.vars").exists() {
         return Err("generator smoke copied credential files".into());
+    }
+    for path in [
+        "public/assets/app.css",
+        "public/assets/vendor/htmx-2.0.10.min.js",
+        "crates/templates/templates/layouts/base.html",
+        "crates/templates/templates/pages/design_system.html",
+        "workers/app/src/routes/system.rs",
+        ".github/lighthouse/budgets.json",
+    ] {
+        if !dir.join(path).is_file() {
+            return Err(format!("generator smoke missing new starter path: {path}"));
+        }
+    }
+    let manifest =
+        fs::read_to_string(dir.join("public/manifest.webmanifest")).map_err(|e| e.to_string())?;
+    if !manifest.contains("Sample Product") {
+        return Err("generator smoke did not rewrite product copy".into());
     }
     fs::remove_dir_all(&dir).ok();
     println!("generator smoke passed");

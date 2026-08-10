@@ -2,6 +2,12 @@
 
 Keep Cloudflare control-plane tokens outside Worker runtime. Use prepared D1 SQL, explicit public/draft state, no private cache, CSP-safe external scripts, upload allowlists/limits, versioned contracts and idempotency keys. Add authentication/authorization server-side before exposing tenant data. Reassess IndexedDB data classification before storing sensitive data offline.
 
+## Cache and offline boundary
+
+All dynamic responses pass through `workers/app/src/http.rs`. `CachePolicy::Private` sets `Cache-Control: no-store` and never emits a CDN cache directive. Only published note representations and public discovery routes opt into browser plus edge freshness. Treat selecting a public policy as a data-publication decision, not a performance tweak.
+
+Cloudflare Static Assets owns `public/` caching through `public/_headers`. Only versioned vendor files are immutable. The service worker stores the public application shell and static offline page; it must never store workspace HTML, note routes, authenticated responses, or CSRF values. IndexedDB outbox entries carry content and stable operation IDs only. Replay obtains a current token from authenticated, `no-store` `GET /session/csrf` after reconnecting.
+
 ## Rate limiting
 
 All mutation routes — `POST /notes` (create), `POST /notes/:id/summarize`, `POST /notes/:id/publish`, and `POST /upload` — are guarded by the Cloudflare Rate Limiting API (`RATE_LIMITER` binding in `workers/app/wrangler.jsonc`). Limits are keyed on the owner id from the request's user context, so they are per-user rather than per-IP.

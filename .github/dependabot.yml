@@ -7,7 +7,7 @@ updates:
       rust-cloudflare:
         patterns: ["worker", "worker-*"]
       rust-core:
-        patterns: ["serde*", "schemars", "uuid", "maud"]
+        patterns: ["serde*", "schemars", "uuid", "askama*", "time"]
   - package-ecosystem: github-actions
     directory: /
     schedule: {interval: monthly}

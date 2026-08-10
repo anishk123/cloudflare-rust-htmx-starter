@@ -4,6 +4,7 @@ The canonical interface is Rust `xtask`; run `cargo xtask help` at any time.
 
 ```bash
 cargo xtask bootstrap
+cargo xtask vendor
 cargo xtask dev
 cargo xtask test
 cargo xtask e2e
@@ -20,3 +21,5 @@ cargo xtask migrate
 cargo xtask deploy
 cargo xtask versions
 ```
+
+`vendor` refreshes only the pinned HTMX and response-targets files under `public/assets/vendor/`. The starter-owned CSS and JavaScript are source code and are never overwritten by vendoring.

@@ -5,12 +5,11 @@
 ![Rust](https://img.shields.io/badge/Rust-1.97.1-000000?logo=rust)
 ![workers-rs](https://img.shields.io/badge/workers--rs-0.8.5-F38020?logo=cloudflare)
 ![HTMX](https://img.shields.io/badge/HTMX-2.0.10-3366CC)
-![Pico CSS](https://img.shields.io/badge/Pico_CSS-2.1.1-0172AD)
-![Maud](https://img.shields.io/badge/Maud-0.27-6B7280)
+![Askama](https://img.shields.io/badge/Askama-0.16.0-6B7280)
 ![Wrangler](https://img.shields.io/badge/Wrangler-4.120.0-F38020?logo=cloudflare)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-A cloneable, mobile-first Cloudflare application foundation where **Rust renders semantic HTML**, **HTMX handles server interaction**, **Pico supplies minimal semantic styling**, and only a tiny amount of vanilla JavaScript handles browser-only capabilities such as PWA/offline state.
+A cloneable, mobile-first Cloudflare application foundation where **Rust renders external Askama templates**, **HTMX handles server interaction**, and a small starter-owned design system makes ordinary product screens polished without a frontend build pipeline. Tiny vanilla JavaScript is reserved for browser-only capabilities such as PWA/offline state.
 
 There is **no Python source, package.json, frontend framework, JavaScript bundler, CSS compiler, ORM, or Node application runtime**. Wrangler still requires Cloudflare's Node-based tooling; the Rust `xtask` hides that implementation detail behind one command surface.
 
@@ -22,10 +21,10 @@ There is **no Python source, package.json, frontend framework, JavaScript bundle
 | Application language | Rust → Wasm | small deterministic runtime artifact, strong types, one backend/tooling language |
 | Worker SDK | `workers-rs` 0.8.5 | Cloudflare-maintained Rust bindings for fetch, D1, R2, Queues and more |
 | Router | `workers-rs::Router` | avoids adding another web framework |
-| HTML | Maud 0.27 | typed server-side HTML, escaping by default, excellent HTMX fragments |
+| HTML | Askama 0.16 | ordinary `.html` files, compile-time checking, escaping by default, typed page models |
 | Hypermedia | HTMX 2.0.10 | server-owned state and partial HTML updates without hydration |
 | HTTP error targeting | response-targets 2.0.4 | maps 4xx/5xx responses to error regions without custom request JS |
-| CSS | Pico CSS 2.1.1 + `app.css` | semantic defaults plus a tiny starter-owned application-shell layer |
+| CSS | starter-owned `app.css` | explicit tokens, cascade layers, accessible components, no framework contract to fight |
 | Browser JS | `app.js` | only IndexedDB, PWA lifecycle, network status, install prompt; lifecycle-safe |
 | Database | D1 + prepared SQL | Cloudflare-native SQLite semantics, no Wasm ORM overhead |
 | Objects | R2 | large uploads/artifacts belong outside relational rows |
@@ -54,7 +53,7 @@ phone / tablet / desktop / crawler
                              D1
 ```
 
-One HTTP Worker is intentionally both page renderer and API boundary: with HTMX, splitting web/API Workers adds ceremony without useful separation. Background jobs remain separate because retry/failure/scaling semantics are genuinely different.
+Cloudflare Static Assets serves CSS, JavaScript, icons, the manifest, and the offline page ahead of Rust. One HTTP Worker remains both page renderer and API boundary: with HTMX, splitting web/API Workers adds ceremony without useful separation. Background jobs remain separate because retry/failure/scaling semantics are genuinely different.
 
 ## Quick start — local first
 
@@ -187,7 +186,7 @@ native HTML → CSS → HTMX → tiny vanilla JS → another library only with e
 
 Prefer native `<dialog>`, popover, `<details>/<summary>`, HTML constraint validation, `<progress>`, semantic landmarks and real forms/links. `app.js` uses document-level event delegation and `htmx.onLoad()` so HTMX swaps cannot silently remove behavior.
 
-Pico owns semantic visual defaults. `app.css` owns only application structure: app shell, sticky header/sidebar, stacks/clusters/grids, toast region, status/errors, and responsive visibility helpers.
+`public/assets/app.css` is the design system. Its `reset`, `tokens`, `base`, `layout`, `components`, and `utilities` cascade layers make ownership predictable for humans and coding agents. Change tokens first, compose the documented layout/component classes second, and add a focused selector only when the component gallery cannot express the product need. Use `/design-system` as the live visual inventory.
 
 ## Progressive enhancement
 
@@ -220,6 +219,14 @@ JSON-LD   embedded in semantic HTML
 ```
 
 It also includes `robots.txt`, `sitemap.xml`, `llms.txt`, canonical URLs and server-rendered content. Do not serve materially different facts based on crawler user-agent; multiple representations must remain faithful to the same source model.
+
+Published HTML and data use separate browser and Cloudflare edge freshness policies. Workspace HTML, mutations, health responses, and the CSRF token endpoint are always `Cache-Control: no-store`. Static Assets owns browser files; only content-addressed vendor files receive one-year immutable caching. The service worker caches a token-free shell and never caches note/workspace routes.
+
+## Performance contract
+
+The fast path has no hydration, web font, runtime CDN, CSS compiler, or application bundle. HTML streams from the nearest Worker while static files use Cloudflare Static Assets and native browser caching. Structural checks enforce uncompressed budgets of 24 KiB for starter-owned CSS and 8 KiB for starter-owned JavaScript. `.github/lighthouse/budgets.json` records the transport and Core Web Vitals targets for teams that add Lighthouse CI or equivalent real-device monitoring.
+
+These defaults create a very small rendering workload, including on slow devices, but they are budgets rather than a promise about every future app. Measure production field data, image weight, database latency, and third-party scripts as the product grows.
 
 ## Contracts
 
@@ -273,19 +280,20 @@ Tool-specific entry files (`CLAUDE.md`, `CODEX.md`, `OMNIAGENT.md`) all point ba
 ## Repository map
 
 ```text
-workers/app/          fetch routes, D1/R2/Queue producer, static assets
+workers/app/          small route table plus focused auth/http/route modules
 workers/jobs/         Queue consumer
 crates/contracts/     versioned Serde/Schemars boundaries
 crates/domain/        framework-independent business rules
 crates/database/      prepared D1 SQL repositories
-crates/templates/     Maud pages and HTMX fragments
+crates/templates/     typed Askama view models and external HTML templates
 crates/observability/ structured events
 crates/shared/        small dependency-light helpers
 crates/xtask/         all developer automation
-public/vendor/        browser libraries served from first-party origin
-public/app.css        app-shell/layout layer
-public/app.js         lifecycle-safe PWA/offline browser capabilities
+public/assets/vendor/ versioned browser libraries served from first-party origin
+public/assets/app.css starter-owned Quiet Product design system
+public/assets/app.js  lifecycle-safe PWA/offline browser capabilities
 public/sw.js          conservative app-shell service worker
+public/offline.html   static, credential-free offline fallback
 migrations/           D1 schema
 ```
 
@@ -306,11 +314,7 @@ Read `docs/SECURITY.md` and `SECURITY.md` before adding authentication, payments
 
 ## Third-party assets
 
-See `THIRD_PARTY_NOTICES.md`. `cargo xtask bootstrap` vendors the pinned upstream browser assets into `public/vendor/`; production serves them from this Worker origin, so there is no runtime CDN dependency.
-
-## Reproducible dependency lock
-
-The first successful Cargo command generates `Cargo.lock`. Because this archive was produced in an environment without Rust registry access, the lockfile is not fabricated. After your first `cargo xtask bootstrap` / `cargo xtask verify`, commit the generated `Cargo.lock` so CI uses exactly the same dependency graph.
+See `THIRD_PARTY_NOTICES.md`. `cargo xtask bootstrap` vendors the pinned upstream browser assets into `public/assets/vendor/`; Cloudflare Static Assets serves them from this application origin, so there is no runtime CDN dependency.
 
 ## License
 
