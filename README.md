@@ -9,89 +9,153 @@
 ![Wrangler](https://img.shields.io/badge/Wrangler-4.120.0-F38020?logo=cloudflare)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-A cloneable, mobile-first Cloudflare application foundation where **Rust renders external Askama templates**, **HTMX handles server interaction**, and a small starter-owned design system makes ordinary product screens polished without a frontend build pipeline. Tiny vanilla JavaScript is reserved for browser-only capabilities such as PWA/offline state.
+Build polished, progressively enhanced Cloudflare applications in Rust—without a frontend build pipeline.
 
-There is **no Python source, package.json, frontend framework, JavaScript bundler, CSS compiler, ORM, or Node application runtime**. Wrangler still requires Cloudflare's Node-based tooling; the Rust `xtask` hides that implementation detail behind one command surface.
+This starter gives humans and coding agents the same clear path from first run to production-minded contribution: ordinary external HTML templates, focused Rust modules, native browser behavior, one command surface, and boundaries that stay visible as the product grows.
 
-## The stack — and why each part exists
+## What you get
 
-| Layer | Choice | Why |
-|---|---|---|
-| Edge runtime | Cloudflare Workers | global serverless runtime, native bindings, local `workerd` simulation |
-| Application language | Rust → Wasm | small deterministic runtime artifact, strong types, one backend/tooling language |
-| Worker SDK | `workers-rs` 0.8.5 | Cloudflare-maintained Rust bindings for fetch, D1, R2, Queues and more |
-| Router | `workers-rs::Router` | avoids adding another web framework |
-| HTML | Askama 0.16 | ordinary `.html` files, compile-time checking, escaping by default, typed page models |
-| Hypermedia | HTMX 2.0.10 | server-owned state and partial HTML updates without hydration |
-| HTTP error targeting | response-targets 2.0.4 | maps 4xx/5xx responses to error regions without custom request JS |
-| CSS | starter-owned `app.css` | explicit tokens, cascade layers, accessible components, no framework contract to fight |
-| Browser JS | `app.js` | only IndexedDB, PWA lifecycle, network status, install prompt; lifecycle-safe |
-| Database | D1 + prepared SQL | Cloudflare-native SQLite semantics, no Wasm ORM overhead |
-| Objects | R2 | large uploads/artifacts belong outside relational rows |
-| Async work | Cloudflare Queues | retries, batching, DLQ; separate Worker isolates background work |
-| Contracts | Serde + Schemars | one Rust model for validation/types plus machine-readable JSON Schema |
-| Observability | Workers Logs + structured Rust events | persisted platform logs with request/job correlation; tune sampling for volume |
-| Automation | Rust `xtask` | one intuitive command surface for humans and coding agents |
+| Need | Included foundation |
+|---|---|
+| Fast first render | Server-rendered Askama HTML, no hydration, no web font, tiny enforced CSS/JS budgets |
+| Product-ready UI | Starter-owned responsive design system, dark mode, reduced motion, accessible native controls |
+| Durable data | D1 repositories with prepared SQL and versioned Serde/Schemars contracts |
+| Background work | Idempotent Cloudflare Queue consumer in a separate Rust Worker |
+| Files and artifacts | R2 upload boundary with size, quota, type and magic-byte validation |
+| Public discovery | Canonical HTML, Markdown, JSON, JSON-LD, sitemap, robots and `llms.txt` |
+| Offline resilience | Conservative shell cache and IndexedDB mutation outbox with fresh CSRF replay |
+| Repeatable development | Rust `xtask` commands for bootstrap, local development, testing, generation and deployment |
 
-## Architecture
+### A good fit when
 
-```text
-phone / tablet / desktop / crawler
-                 │
-       semantic HTML + HTMX
-                 │
-                 ▼
-          Rust app Worker
-       ┌─────────┼──────────┐
-       ▼         ▼          ▼
-      D1         R2      Queue producer
-                              │
-                              ▼
-                       Rust jobs Worker
-                              │
-                              ▼
-                             D1
-```
+- you want server-owned HTML and product logic with modest browser JavaScript;
+- SEO, answer-engine discovery, first render and progressive enhancement matter;
+- Cloudflare D1, R2 and Queues fit your infrastructure;
+- you want a compact foundation that humans and agents can understand end to end.
 
-Cloudflare Static Assets serves CSS, JavaScript, icons, the manifest, and the offline page ahead of Rust. One HTTP Worker remains both page renderer and API boundary: with HTMX, splitting web/API Workers adds ceremony without useful separation. Background jobs remain separate because retry/failure/scaling semantics are genuinely different.
+### Choose something else when
 
-## Quick start — local first
+- the product is primarily a highly interactive offline canvas or game;
+- your team requires a client-side component ecosystem or an npm application build;
+- you need infrastructure or database portability to be the primary constraint today.
 
-Prerequisites: Rust/rustup. For Cloudflare local simulation/deploy, install Node 22+ **only so Wrangler can run**; there is no npm application dependency tree.
+## Five-minute start
+
+You need [Rust and rustup](https://rustup.rs/) plus Node.js 22 or newer so Wrangler can run. Node is tooling only: there is no `package.json`, bundler, CSS compiler, or Node application runtime.
+
+### 1. Clone and run
 
 ```bash
-git clone <starter-repository-url> my-app
+git clone https://github.com/anishk123/cloudflare-rust-htmx-starter.git my-app
 cd my-app
-
-cargo xtask dev         # first run bootstraps tooling/assets automatically
-```
-
-Open `http://localhost:8787`.
-
-`cargo xtask dev` checks/bootstrap prerequisites, vendors the pinned browser assets, applies local migrations, and starts both Workers with persistent local D1/R2/Queue state under `.wrangler/state`. You do **not** need a Cloudflare account for ordinary feature development.
-
-Reset local infrastructure:
-
-```bash
-rm -rf .wrangler/state
 cargo xtask dev
 ```
 
-## One-command developer experience
+Open `http://localhost:8787`. The first run checks prerequisites, installs the Rust Wasm target and pinned Wrangler toolchain when needed, vendors browser assets, applies local migrations, and starts the app and jobs Workers. No Cloudflare account is required for local development.
+
+### 2. Make it yours
 
 ```bash
-cargo xtask help
-cargo xtask versions
-cargo xtask vendor
-cargo xtask dev         # first run bootstraps tooling/assets automatically
-cargo xtask test
-cargo xtask e2e
+cargo xtask configure my-app \
+  --title "My App" \
+  --github my-org/my-app
+```
+
+Your most common edit points are intentionally ordinary:
+
+- HTML: `crates/templates/templates/`
+- typed template data: `crates/templates/src/`
+- colors, spacing and components: `public/assets/app.css`
+- HTTP coordination: `workers/app/src/routes/`
+- business rules: `crates/domain/`
+- durable contracts: `crates/contracts/`
+
+Open `http://localhost:8787/design-system` while changing the UI.
+
+### 3. Verify
+
+```bash
 cargo xtask verify
 ```
 
-The same commands are the contract for coding agents. See `AGENTS.md`.
+That one command runs formatting, Clippy, native tests, Wasm checks, release builds, structural rules, generator smoke, browser syntax checks and the local D1/Queue/publication flow.
 
-## Create a new app from the starter
+## Choose your path
+
+| I want to… | Start here |
+|---|---|
+| Understand local state and common setup problems | [Local development](docs/LOCAL_DEVELOPMENT.md) |
+| Add my first product capability | [Extending the starter](docs/EXTENDING.md) |
+| Change pages, fragments or the visual language | [External templates](docs/EXTENDING.md#templates-and-ui) and `/design-system` |
+| Understand request, data, cache and offline flow | [Architecture](docs/ARCHITECTURE.md) |
+| Evolve an API, Queue or offline payload | [Contracts](docs/CONTRACTS.md) |
+| Add real users or tenant data | [Authentication boundary](docs/AUTH.md) |
+| Review security and secret handling | [Security architecture](docs/SECURITY.md) and [secrets](docs/SECRETS.md) |
+| Learn every supported command | [Command reference](docs/COMMANDS.md) |
+| Provision and deploy deliberately | [Deployment](docs/DEPLOYMENT.md) |
+| Make a review-friendly contribution | [Contributing](CONTRIBUTING.md) |
+| Give a coding agent the project contract | [AGENTS.md](AGENTS.md) |
+
+## From Evidence Notes to your product
+
+The included application is a small vertical slice, not a toy homepage. Each part demonstrates a reusable production pattern:
+
+| Demo behavior | Product pattern |
+|---|---|
+| Create a note | validated form → versioned request → domain rule → prepared D1 write |
+| Queue a summary | small ID-only message → idempotent at-least-once consumer → D1 update |
+| Upload an attachment | owner-scoped R2 key → type/signature/size/quota checks |
+| Publish a note | explicit draft/public boundary → canonical HTML, Markdown and JSON |
+| Work through a weak connection | server-rendered shell → conservative static cache → replayable mutation ID |
+| Discover content | semantic HTML → metadata/JSON-LD → sitemap, robots and `llms.txt` |
+
+Replace Evidence Notes feature by feature; keep the architecture boundaries and verification loop.
+
+## How the pieces fit
+
+```text
+human / agent / crawler
+          │
+          ▼
+Cloudflare Static Assets ── CSS, tiny JS, icons, offline shell
+          │
+          ▼
+Rust app Worker ── routes ── Askama pages + HTMX fragments
+       │       │       │
+       ▼       ▼       ▼
+      D1      R2    Queue producer
+                         │
+                         ▼
+                  Rust jobs Worker
+                         │
+                         ▼
+                        D1
+```
+
+Cloudflare Static Assets serves browser files ahead of Rust. The app Worker owns HTTP, authentication context, response policy and product coordination. Domain, database and template crates stay independently understandable. Background work is separate only because retries and at-least-once delivery are genuinely different concerns.
+
+Read [Architecture](docs/ARCHITECTURE.md) when you want the full request, cache and offline boundaries.
+
+## Deliberate technology choices
+
+| Layer | Choice | Why it is here |
+|---|---|---|
+| Runtime | Cloudflare Workers | global serverless execution and local `workerd` simulation |
+| Application | Rust → Wasm | strong types, compact runtime artifacts, one backend/tooling language |
+| HTML | Askama 0.16 | external `.html` files, compile-time checks and escaping by default |
+| Interaction | HTMX 2.0.10 | partial HTML updates without hydration or duplicated client state |
+| UI | starter-owned CSS | explicit tokens/layers, approachable overrides, no framework contract to fight |
+| Data | D1 + prepared SQL | Cloudflare-native relational state without a Wasm ORM |
+| Objects | R2 | uploads and large artifacts stay outside relational rows |
+| Async | Cloudflare Queues | retries, batching and a dead-letter queue |
+| Contracts | Serde + Schemars | validated Rust shapes plus machine-readable JSON Schema |
+| Automation | Rust `xtask` | one discoverable command surface for people and agents |
+
+Browser code is limited to vendored HTMX/response-targets plus starter-owned `app.css`, `app.js` and `sw.js`. Native HTML owns links, forms, validation, disclosure and other behavior before custom JavaScript is considered.
+
+## Create a new application
+
+Generate a clean project without the starter’s Git history or Cloudflare resource IDs:
 
 ```bash
 cargo xtask new my-product \
@@ -103,32 +167,37 @@ cd ../my-product
 cargo xtask dev
 ```
 
-The generator copies the starter while excluding `.git`, build/local Wrangler state, and local credential files; it rewrites Worker/resource names, app copy, PWA identifiers and CI badges, and resets Cloudflare database IDs so a new app can never accidentally point at the source project's D1 database.
+The generator rewrites application/resource names, visible branding, PWA identifiers and CI badges. It excludes credentials, build output and local Wrangler state, then resets D1 IDs so a generated app cannot accidentally address the source project’s database.
 
-For a normal Git clone that you want to rename in place:
+## Performance and caching contract
+
+The fast path has no hydration, web font, runtime CDN or application bundle. Structural checks currently enforce uncompressed limits of 24 KiB for starter-owned CSS and 8 KiB for starter-owned JavaScript. Versioned vendor assets are immutable; starter assets revalidate; published data uses explicit browser and edge freshness; private, mutation, CSRF and negative responses are `Cache-Control: no-store`.
+
+Those defaults make the rendering workload small even on modest devices. They are not a promise about every future application: production Core Web Vitals still depend on content, images, D1 latency and third-party code. `.github/lighthouse/budgets.json` records targets for teams that add deployed Lighthouse or field monitoring.
+
+## Security and data boundaries
+
+The demo is intentionally unauthenticated, but its data access is owner-scoped behind a development identity. Before storing real user or workspace data, choose and enforce an authentication/session model. `no-store` is caching policy, not authorization.
+
+The starter also includes fail-closed double-submit CSRF, prepared SQL, explicit draft/public state, rate limits, validated uploads, idempotent jobs/replay, restrictive CSP, safe JSON-LD serialization, and separation between Cloudflare control-plane credentials and Worker runtime secrets.
+
+Start with [Authentication](docs/AUTH.md), [Security](docs/SECURITY.md), and [Secrets](docs/SECRETS.md) before adding sensitive data, payments or tenant access.
+
+## Testing and CI
 
 ```bash
-cargo xtask configure my-product \
-  --title "My Product" \
-  --github my-org/my-product
+cargo xtask test    # native unit and policy tests
+cargo xtask e2e     # local D1 + Queue + publish/discovery smoke
+cargo xtask check   # structural starter contracts
+cargo xtask smoke   # generated-project contract
+cargo xtask verify  # complete local gate
 ```
 
-## Cloudflare API token — exact setup
+GitHub Actions repeats formatting, Clippy, tests, Wasm checks, release builds, e2e, generator and browser syntax checks. Security workflows add `cargo audit`, dependency review and Dependabot. Ordinary pushes and pull requests never deploy Cloudflare resources.
 
-The starter can deploy using Cloudflare interactive login or a scoped API token. For repeatable automation, use a scoped token.
+## Deploy when you are ready
 
-Cloudflare Dashboard → **My Profile → API Tokens → Create Token → Create Custom Token**.
-
-Grant **Edit** permissions at the Account scope:
-
-| Permission | Why |
-|---|---|
-| Workers Scripts | deploy app and jobs Workers |
-| D1 | create DB and apply migrations |
-| Workers R2 Storage | create/manage attachment bucket |
-| Queues | create jobs Queue and DLQ |
-
-Scope the token to **only the intended account**. Zone/DNS permissions are not needed unless you later automate domains or routes.
+Use a narrowly scoped Cloudflare API token with account-level **Edit** permissions for **Workers Scripts**, **D1**, **Workers R2 Storage**, and **Queues**. Keep control-plane credentials out of `.dev.vars` and Worker bindings.
 
 ```bash
 export CLOUDFLARE_API_TOKEN="..."
@@ -138,184 +207,40 @@ cargo xtask whoami
 cargo xtask deploy
 ```
 
-`cargo xtask deploy` runs verification, provisions/reuses resources, applies migrations, then deploys the jobs Worker followed by the app Worker. The lower-level `provision` and `migrate` commands remain available when you want to run those steps separately.
-
-Provisioning creates or reuses:
-
-```text
-<app>-db
-<app>-attachments
-<app>-jobs
-<app>-jobs-dlq
-```
-
-and writes the real D1 UUID into both Worker configs.
-
-**Never put the Cloudflare control-plane token in `.dev.vars` or Worker bindings.** It belongs only in the developer/CI environment. For GitHub deployment workflows, store `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as protected repository/environment secrets.
-
-## Authentication and application secrets
-
-The example is intentionally **unauthenticated** so the generic starter does not force an identity vendor. `no-store` prevents caching; it does not make a route private. Before using real user data, add an explicit authorization boundary. `docs/AUTH.md` covers Cloudflare Access vs. public SaaS/OIDC choices, cookie/CSRF requirements, and server-side authorization rules.
-
-Keep Cloudflare control-plane credentials separate from application runtime secrets. Runtime API keys should use Cloudflare secrets (`wrangler secret put`) and ignored `.dev.vars` locally; see `docs/SECRETS.md`.
-
-## PWA and cross-device behavior
-
-The included Evidence Notes example demonstrates:
-
-- installable manifest/icons;
-- explicit service-worker update/reload lifecycle that does not replace an active editing session;
-- responsive layout and 44px-friendly controls;
-- safe-area/mobile viewport support;
-- system dark mode and reduced motion;
-- service-worker app-shell cache;
-- IndexedDB mutation outbox;
-- stable operation IDs for offline replay;
-- explicit online/offline status;
-- **no private note-page caching**.
-
-Offline scope is deliberately conservative: local note capture is supported; AI calls, external publishing, authentication changes and other server-dependent actions should remain online-only unless a product explicitly designs their conflict semantics.
-
-## UI rules
-
-The hierarchy for humans and agents is:
-
-```text
-native HTML → CSS → HTMX → tiny vanilla JS → another library only with evidence it is needed
-```
-
-Prefer native `<dialog>`, popover, `<details>/<summary>`, HTML constraint validation, `<progress>`, semantic landmarks and real forms/links. `app.js` uses document-level event delegation and `htmx.onLoad()` so HTMX swaps cannot silently remove behavior.
-
-`public/assets/app.css` is the design system. Its `reset`, `tokens`, `base`, `layout`, `components`, and `utilities` cascade layers make ownership predictable for humans and coding agents. Change tokens first, compose the documented layout/component classes second, and add a focused selector only when the component gallery cannot express the product need. Use `/design-system` as the live visual inventory.
-
-## Progressive enhancement
-
-Important interactions have ordinary web fallbacks:
-
-```html
-<form method="post" action="/notes"
-      hx-post="/notes" hx-target="#notes">…</form>
-```
-
-A browser can still submit or navigate if HTMX fails. There are no inline `onclick` handlers or executable inline application scripts, allowing a restrictive Content Security Policy.
-
-## D1 / R2 / Queue conventions
-
-- D1: authoritative relational state and idempotency records.
-- R2: uploads and large generated artifacts; rows store keys/metadata, not blobs.
-- Queue: small versioned messages containing IDs/references.
-- Queue consumers must assume at-least-once delivery and make business mutation + processed marker atomic where possible.
-- Use prepared/bound SQL; never interpolate untrusted values.
-
-## SEO and AEO
-
-Only explicitly published records enter public surfaces. The example exposes the same canonical record as:
-
-```text
-HTML      /notes/:id/:slug
-Markdown  /notes/:id.md
-JSON      /notes/:id.json
-JSON-LD   embedded in semantic HTML
-```
-
-It also includes `robots.txt`, `sitemap.xml`, `llms.txt`, canonical URLs and server-rendered content. Do not serve materially different facts based on crawler user-agent; multiple representations must remain faithful to the same source model.
-
-Published HTML and data use separate browser and Cloudflare edge freshness policies. Workspace HTML, mutations, health responses, and the CSRF token endpoint are always `Cache-Control: no-store`. Static Assets owns browser files; only content-addressed vendor files receive one-year immutable caching. The service worker caches a token-free shell and never caches note/workspace routes.
-
-## Performance contract
-
-The fast path has no hydration, web font, runtime CDN, CSS compiler, or application bundle. HTML streams from the nearest Worker while static files use Cloudflare Static Assets and native browser caching. Structural checks enforce uncompressed budgets of 24 KiB for starter-owned CSS and 8 KiB for starter-owned JavaScript. `.github/lighthouse/budgets.json` records the transport and Core Web Vitals targets for teams that add Lighthouse CI or equivalent real-device monitoring.
-
-These defaults create a very small rendering workload, including on slow devices, but they are budgets rather than a promise about every future app. Measure production field data, image weight, database latency, and third-party scripts as the product grows.
-
-## Contracts
-
-Durable/request boundaries live in `crates/contracts` and derive `Serialize`, `Deserialize`, and `JsonSchema`. `/contracts` exposes the catalog as JSON Schema for agents/integrations.
-
-When adding a feature:
-
-```text
-contract → test → domain rule → prepared SQL → route/fragment → queue/offline only if needed
-```
-
-See `docs/CONTRACTS.md` and `AGENTS.md`.
-
-## Testing and CI
-
-Run locally:
-
-```bash
-cargo xtask test
-cargo xtask e2e
-cargo xtask verify
-```
-
-GitHub Actions runs:
-
-- starter structural/best-practice checks;
-- `cargo fmt --check`;
-- Clippy with warnings denied;
-- all workspace tests;
-- `wasm32-unknown-unknown` check;
-- release builds for app and jobs Workers;
-- local multi-Worker end-to-end smoke covering D1 + Queue + publish/JSON;
-- browser JS syntax checks;
-- project-generator smoke test;
-- `cargo audit` on PR/push/weekly schedule;
-- GitHub dependency review on PRs;
-- Dependabot for Cargo and Actions.
-
-Status badges become truthful only after the generated repo is pushed and the first workflow finishes. The repository also includes a manual `Deploy` workflow using a protected `production` environment; it never deploys on ordinary pushes. Workers Logs are explicitly enabled. For high-volume production apps, tune Cloudflare log sampling rather than disabling structured application events.
-
-Do not point preview/staging Workers at production D1/R2/Queues. If you add preview deployments, create separate resources and environment bindings first.
-
-## Agent use
-
-Point Codex, Claude or OmniAgent at the repository and say:
-
-> Read `AGENTS.md` and `README.md` first. Run `cargo xtask check` before changing code. Build the requested feature within the existing Rust/HTMX/Cloudflare boundaries. Define durable contracts first, add tests before implementation, use prepared D1 SQL, preserve progressive enhancement and HTMX lifecycle safety, keep Queue handlers idempotent, and run `cargo xtask verify` before reporting completion. Do not deploy unless explicitly asked.
-
-Tool-specific entry files (`CLAUDE.md`, `CODEX.md`, `OMNIAGENT.md`) all point back to the same authoritative contract to prevent instruction drift.
+`deploy` verifies locally, provisions or reuses resources, applies migrations, deploys the jobs Worker, then deploys the app Worker. Read [Deployment](docs/DEPLOYMENT.md) before the first remote mutation.
 
 ## Repository map
 
 ```text
 workers/app/          small route table plus focused auth/http/route modules
-workers/jobs/         Queue consumer
+workers/jobs/         idempotent Queue consumer
 crates/contracts/     versioned Serde/Schemars boundaries
 crates/domain/        framework-independent business rules
 crates/database/      prepared D1 SQL repositories
-crates/templates/     typed Askama view models and external HTML templates
-crates/observability/ structured events
-crates/shared/        small dependency-light helpers
-crates/xtask/         all developer automation
-public/assets/vendor/ versioned browser libraries served from first-party origin
-public/assets/app.css starter-owned Quiet Product design system
-public/assets/app.js  lifecycle-safe PWA/offline browser capabilities
+crates/templates/     typed view models and external Askama HTML
+crates/observability/ structured events and request/job correlation
+crates/shared/        dependency-light shared helpers
+crates/xtask/         developer, generator and deployment automation
+public/assets/        design system, browser code and versioned vendor assets
 public/sw.js          conservative app-shell service worker
-public/offline.html   static, credential-free offline fallback
-migrations/           D1 schema
+public/offline.html   static credential-free offline fallback
+migrations/           D1 schema evolution
+docs/                 focused learning and production guides
 ```
 
-## Security defaults
+## Contributing—human or agent
 
-- restrictive CSP and common browser security headers;
-- no inline application JS;
-- no control-plane secrets in Worker runtime;
-- no private-response caching;
-- upload MIME allowlist with magic-byte verification + size cap;
-- public/draft state boundary;
-- prepared SQL;
-- idempotent sync/jobs;
-- Dependabot, dependency review and cargo-audit;
-- minimal Cloudflare API-token scope.
+Humans and coding agents use the same loop:
 
-Read `docs/SECURITY.md` and `SECURITY.md` before adding authentication, payments or sensitive data.
+```text
+read → choose the right boundary → failing test → focused implementation
+→ canonical verification → reviewable pull request
+```
 
-## Third-party assets
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the first contribution and [AGENTS.md](AGENTS.md) for the authoritative architecture/command contract. Tool-specific files point back to those sources so guidance does not drift.
 
-See `THIRD_PARTY_NOTICES.md`. `cargo xtask bootstrap` vendors the pinned upstream browser assets into `public/assets/vendor/`; Cloudflare Static Assets serves them from this application origin, so there is no runtime CDN dependency.
+## Third-party assets and license
 
-## License
+Pinned browser assets are served from this application origin, so production has no browser-time third-party CDN dependency. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-MIT.
+MIT licensed.

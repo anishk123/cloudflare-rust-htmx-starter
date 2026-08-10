@@ -979,22 +979,35 @@ fn template_check() -> Result<(), String> {
     if !ci.contains("cargo test -p starter-app-worker") {
         return Err("CI must run native Worker response-policy tests".into());
     }
-    for path in [
+    let active_docs = [
         "README.md",
         "AGENTS.md",
+        "CONTRIBUTING.md",
+        "CHANGELOG.md",
+        "CLAUDE.md",
+        "CODEX.md",
+        "OMNIAGENT.md",
+        "SECURITY.md",
+        "THIRD_PARTY_NOTICES.md",
+        ".github/pull_request_template.md",
         "docs/ARCHITECTURE.md",
         "docs/AUTH.md",
+        "docs/COMMANDS.md",
+        "docs/CONTRACTS.md",
+        "docs/DEPLOYMENT.md",
         "docs/EXTENDING.md",
-        "THIRD_PARTY_NOTICES.md",
-        ".github/dependabot.yml",
-        ".github/workflows/ci.yml",
-    ] {
+        "docs/LOCAL_DEVELOPMENT.md",
+        "docs/SECRETS.md",
+        "docs/SECURITY.md",
+    ];
+    for path in active_docs {
         let source = fs::read_to_string(path).map_err(|e| e.to_string())?;
         for banned in [
             "Maud",
             "maud",
             "Pico CSS",
             "pico.min.css",
+            "public/app.css",
             "public/app.js",
             "public/vendor/",
         ] {
@@ -1002,6 +1015,27 @@ fn template_check() -> Result<(), String> {
                 return Err(format!(
                     "obsolete starter reference {banned:?} remains in {path}"
                 ));
+            }
+        }
+    }
+    for (path, needles) in [
+        (
+            "README.md",
+            &["Five-minute start", "Choose your path", "CONTRIBUTING.md"][..],
+        ),
+        (
+            "AGENTS.md",
+            &["## Documentation rules", "## Completion"][..],
+        ),
+        (
+            "CONTRIBUTING.md",
+            &["## First contribution", "## Pull request checklist"][..],
+        ),
+    ] {
+        let source = fs::read_to_string(path).map_err(|error| error.to_string())?;
+        for needle in needles {
+            if !source.contains(needle) {
+                return Err(format!("{path} missing documentation contract: {needle}"));
             }
         }
     }

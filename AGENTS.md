@@ -47,6 +47,22 @@ cargo xtask deploy
 
 contract → failing test → domain logic → prepared SQL → Askama page/fragment → queue if needed → offline semantics if appropriate → `cargo xtask verify`
 
+## Documentation rules
+
+1. Keep `README.md` as orientation and route deeper detail to focused docs.
+2. Keep `AGENTS.md` normative; tool-specific agent files point here rather than copying rules.
+3. Update `CONTRIBUTING.md` when the shared human/agent contribution loop changes.
+4. Use current Askama and `public/assets/` paths in active documentation.
+5. Preserve historical decision records under `docs/superpowers/`; add context instead of rewriting history.
+6. Prefer copyable commands, explicit prerequisites, honest claims and a clear next step.
+7. Update relevant documentation in the same change when behavior, contracts, commands, security boundaries or repository paths change.
+
 ## Completion
 
-Report exactly which commands ran. If network/tooling blocks Rust/Wrangler verification, say so; never call unexecuted checks passing.
+Before reporting completion:
+
+1. Run the focused tests used for the red/green cycle.
+2. Run `cargo xtask verify`; run `cargo xtask e2e` and `cargo xtask smoke` explicitly when their boundaries changed.
+3. Confirm documentation matches any changed behavior, command, contract or path.
+4. Report exactly which commands ran and whether each passed.
+5. If network/tooling blocks Rust, Wrangler or GitHub verification, state the blocker; never call an unexecuted or pending check passing.
