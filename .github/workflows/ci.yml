@@ -40,6 +40,8 @@ jobs:
         run: cargo clippy --workspace --exclude xtask --target wasm32-unknown-unknown -- -D warnings
       - name: Unit tests — pure/native crates
         run: cargo test -p starter-contracts -p starter-domain -p starter-templates -p starter-shared -p xtask
+      - name: Unit tests — Worker response policies
+        run: cargo test -p starter-app-worker
       - name: Wasm check — Worker application crates
         run: cargo check --workspace --exclude xtask --target wasm32-unknown-unknown
       - name: Build app Worker
@@ -56,9 +58,9 @@ jobs:
         run: npx --yes wrangler@4.120.0 deploy -c workers/jobs/wrangler.jsonc --dry-run --outdir /tmp/wrangler-jobs
       - name: Browser JS syntax
         run: |
-          node --check public/app.js
+          node --check public/assets/app.js
           node --check public/sw.js
-          node --check public/vendor/response-targets.js
+          node --check public/assets/vendor/response-targets-2.0.4.js
       - name: Local end-to-end smoke
         run: cargo xtask e2e
       - name: Generator smoke

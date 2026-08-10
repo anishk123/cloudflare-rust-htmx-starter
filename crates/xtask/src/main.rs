@@ -8,7 +8,7 @@ const WRANGLER_VERSION: &str = "4.120.0";
 const WORKER_BUILD_VERSION: &str = "0.8.5";
 const HTMX_VERSION: &str = "2.0.10";
 const RESPONSE_TARGETS_VERSION: &str = "2.0.4";
-const PICO_VERSION: &str = "2.1.1";
+const ASKAMA_VERSION: &str = "0.16.0";
 
 fn main() {
     if let Err(e) = run() {
@@ -48,22 +48,24 @@ fn run() -> Result<(), String> {
     }
 }
 
-fn help() {
-    println!(
-        r#"Rust + HTMX Cloudflare Starter
+fn help_text() -> &'static str {
+    r#"Rust + HTMX Cloudflare Starter
 
 Canonical commands:
   cargo xtask bootstrap             Install/check prerequisites + vendor pinned browser assets
-  cargo xtask vendor                Refresh pinned HTMX/Pico/extension assets
+  cargo xtask vendor                Refresh pinned HTMX/extension assets
   cargo xtask dev                   Run both Workers locally with persistent D1/R2/Queues
   cargo xtask test                  Run Rust tests + static browser/template checks
   cargo xtask e2e                   Boot local Workers and smoke D1 + Queue + public routes
   cargo xtask verify                fmt + clippy + tests + wasm checks + Worker builds
+  cargo xtask check                 Check structural starter/documentation contracts
+  cargo xtask smoke                 Generate a sample app and verify its starter contract
   cargo xtask new NAME [options]    Create a sibling app from this starter
   cargo xtask configure [options]   Rename/configure this clone in place
   cargo xtask auth                  Show Cloudflare token instructions
   cargo xtask whoami                Verify Cloudflare credentials
   cargo xtask provision             Create/reuse D1, R2, Queue, DLQ and write D1 IDs
+  cargo xtask migrate-local         Apply D1 migrations to persistent local state
   cargo xtask migrate               Apply remote D1 migrations
   cargo xtask deploy                Verify, migrate, deploy jobs then app Worker
   cargo xtask versions              Print pinned major component versions
@@ -81,11 +83,14 @@ Wrangler is Cloudflare's required driver. xtask invokes a pinned Wrangler via np
 when a local `wrangler` binary is not available; Node is tooling only, never an
 application runtime or source-language dependency.
 "#
-    );
+}
+
+fn help() {
+    print!("{}", help_text());
 }
 fn versions() {
     println!(
-        "workers-rs {WORKER_BUILD_VERSION}\nHTMX {HTMX_VERSION}\nresponse-targets {RESPONSE_TARGETS_VERSION}\nPico CSS {PICO_VERSION}\nMaud 0.27.0\nWrangler {WRANGLER_VERSION}\nRust >=1.97.1"
+        "workers-rs {WORKER_BUILD_VERSION}\nAskama {ASKAMA_VERSION}\nHTMX {HTMX_VERSION}\nresponse-targets {RESPONSE_TARGETS_VERSION}\nWrangler {WRANGLER_VERSION}\nRust >=1.97.1"
     );
 }
 
@@ -157,32 +162,25 @@ fn vendor_assets() -> Result<(), String> {
     let assets = [
         (
             format!("https://cdn.jsdelivr.net/npm/htmx.org@{HTMX_VERSION}/dist/htmx.min.js"),
-            "public/vendor/htmx.min.js",
+            "public/assets/vendor/htmx-2.0.10.min.js",
             format!("version:\"{HTMX_VERSION}\""),
         ),
         (
             format!(
                 "https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@{RESPONSE_TARGETS_VERSION}"
             ),
-            "public/vendor/response-targets.js",
+            "public/assets/vendor/response-targets-2.0.4.js",
             "response-targets".to_string(),
         ),
-        (
-            format!("https://cdn.jsdelivr.net/npm/@picocss/pico@{PICO_VERSION}/css/pico.min.css"),
-            "public/vendor/pico.min.css",
-            "Pico CSS".to_string(),
-        ),
     ];
-    fs::create_dir_all("public/vendor").map_err(|e| e.to_string())?;
+    fs::create_dir_all("public/assets/vendor").map_err(|e| e.to_string())?;
     let client = reqwest::blocking::Client::builder()
         .user_agent("cloudflare-rust-htmx-starter-xtask")
         .build()
         .map_err(|e| e.to_string())?;
     for (url, path, marker) in assets {
         let current = fs::read_to_string(path).unwrap_or_default();
-        if current.contains(&marker)
-            && !(path.ends_with("pico.min.css") && current.contains("compatible semantic baseline"))
-        {
+        if current.contains(&marker) {
             continue;
         }
         println!("vendoring {url}");
@@ -257,6 +255,8 @@ fn test() -> Result<(), String> {
     tests.args([
         "test",
         "-p",
+        "starter-app-worker",
+        "-p",
         "starter-contracts",
         "-p",
         "starter-domain",
@@ -318,9 +318,9 @@ fn verify() -> Result<(), String> {
     }
     if command_exists("node") {
         for js in [
-            "public/app.js",
+            "public/assets/app.js",
             "public/sw.js",
-            "public/vendor/response-targets.js",
+            "public/assets/vendor/response-targets-2.0.4.js",
         ] {
             let mut n = Command::new("node");
             n.args(["--check", js]);
@@ -453,8 +453,10 @@ fn e2e() -> Result<(), String> {
             .build()
             .map_err(|e| e.to_string())?;
         let base = format!("http://127.0.0.1:{port}");
+        const READY_ATTEMPTS: usize = 240;
+        const READY_INTERVAL: Duration = Duration::from_millis(250);
         let mut ready = false;
-        for _ in 0..80 {
+        for _ in 0..READY_ATTEMPTS {
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
                 return Err(format!(
                     "local Workers exited before becoming ready: {status}"
@@ -469,25 +471,91 @@ fn e2e() -> Result<(), String> {
                 ready = true;
                 break;
             }
-            thread::sleep(Duration::from_millis(250));
+            thread::sleep(READY_INTERVAL);
         }
         if !ready {
-            return Err("local Workers did not become ready within 20 seconds".into());
+            return Err("local Workers did not become ready within 60 seconds".into());
         }
 
-        let home = client
+        let missing_csrf = client
+            .post(format!("{base}/notes"))
+            .form(&[("title", "Missing CSRF"), ("body", "Must be rejected")])
+            .send()
+            .map_err(|e| e.to_string())?;
+        if missing_csrf.status().as_u16() != 403 {
+            return Err(format!(
+                "mutation without CSRF state expected 403, got {}",
+                missing_csrf.status()
+            ));
+        }
+
+        let csrf_response = client
+            .get(format!("{base}/session/csrf"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if csrf_response
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            != Some("no-store")
+        {
+            return Err("CSRF endpoint must be no-store".into());
+        }
+        let csrf_cookie = csrf_response
+            .headers()
+            .get("set-cookie")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .ok_or("CSRF endpoint did not mint a cookie")?
+            .to_string();
+        let csrf_body = csrf_response.text().map_err(|e| e.to_string())?;
+        let csrf_token = serde_json::from_str::<serde_json::Value>(&csrf_body)
+            .map_err(|e| e.to_string())?["csrf_token"]
+            .as_str()
+            .ok_or("CSRF endpoint did not return a token")?
+            .to_string();
+        let mismatched_csrf = client
+            .post(format!("{base}/notes"))
+            .header("cookie", &csrf_cookie)
+            .form(&[
+                ("title", "Mismatched CSRF"),
+                ("body", "Must be rejected"),
+                ("csrf_token", "wrong"),
+            ])
+            .send()
+            .map_err(|e| e.to_string())?;
+        if mismatched_csrf.status().as_u16() != 403 {
+            return Err(format!(
+                "mutation with mismatched CSRF expected 403, got {}",
+                mismatched_csrf.status()
+            ));
+        }
+
+        let home_response = client
             .get(format!("{base}/"))
             .send()
-            .map_err(|e| e.to_string())?
-            .text()
             .map_err(|e| e.to_string())?;
+        let home_cache = home_response
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        if home_cache != "no-store" {
+            return Err(format!("private home must be no-store, got {home_cache:?}"));
+        }
+        let home = home_response.text().map_err(|e| e.to_string())?;
         if !home.contains("Evidence Notes") {
             return Err("home page smoke failed".into());
         }
 
         let create = client
             .post(format!("{base}/notes"))
-            .form(&[("title", "E2E note"), ("body", "Queue and D1 smoke test")])
+            .header("cookie", &csrf_cookie)
+            .form(&[
+                ("title", "E2E note"),
+                ("body", "Queue and D1 smoke test"),
+                ("csrf_token", csrf_token.as_str()),
+            ])
             .send()
             .map_err(|e| e.to_string())?;
         if create.status().as_u16() != 303 {
@@ -519,8 +587,26 @@ fn e2e() -> Result<(), String> {
         }
         let note_id = note_id.ok_or("created note not found in home HTML")?;
 
+        let draft_public = client
+            .get(format!("{base}/notes/{note_id}/e2e-note"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if draft_public.status().as_u16() != 404 {
+            return Err("draft note unexpectedly appeared on a public route".into());
+        }
+        if draft_public
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            != Some("no-store")
+        {
+            return Err("negative public responses must not be cached".into());
+        }
+
         let summarize = client
             .post(format!("{base}/notes/{note_id}/summarize"))
+            .header("cookie", &csrf_cookie)
+            .form(&[("csrf_token", csrf_token.as_str())])
             .send()
             .map_err(|e| e.to_string())?;
         if summarize.status().as_u16() != 303 {
@@ -537,7 +623,7 @@ fn e2e() -> Result<(), String> {
                 .map_err(|e| e.to_string())?
                 .text()
                 .map_err(|e| e.to_string())?;
-            if body.contains("Summary:") {
+            if body.contains("<strong>Summary</strong>") {
                 summarized = true;
                 break;
             }
@@ -549,6 +635,8 @@ fn e2e() -> Result<(), String> {
 
         let publish = client
             .post(format!("{base}/notes/{note_id}/publish"))
+            .header("cookie", &csrf_cookie)
+            .form(&[("csrf_token", csrf_token.as_str())])
             .send()
             .map_err(|e| e.to_string())?;
         if publish.status().as_u16() != 303 {
@@ -564,6 +652,93 @@ fn e2e() -> Result<(), String> {
         let body = public.text().map_err(|e| e.to_string())?;
         if !body.contains("\"status\":\"published\"") {
             return Err("public JSON did not expose published status".into());
+        }
+
+        let malformed_public = client
+            .get(format!("{base}/notes/not-a-uuid/malformed"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if malformed_public.status().as_u16() != 404 {
+            return Err(format!(
+                "malformed public note id expected 404, got {}",
+                malformed_public.status()
+            ));
+        }
+
+        let wrong_slug = client
+            .get(format!("{base}/notes/{note_id}/wrong-slug"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if wrong_slug.status().as_u16() != 308
+            || wrong_slug
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok())
+                != Some(format!("{base}/notes/{note_id}/e2e-note").as_str())
+        {
+            return Err("non-canonical public slug did not redirect permanently".into());
+        }
+
+        let public_html = client
+            .get(format!("{base}/notes/{note_id}/e2e-note"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        let public_cache = public_html
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default();
+        if !public_cache.starts_with("public") {
+            return Err(format!(
+                "published HTML must be explicitly public, got {public_cache:?}"
+            ));
+        }
+        let public_html = public_html.text().map_err(|e| e.to_string())?;
+        if !public_html.contains(&format!(
+            "rel=\"canonical\" href=\"{base}/notes/{note_id}/e2e-note\""
+        )) {
+            return Err("published HTML canonical URL was not absolute".into());
+        }
+
+        let robots = client
+            .get(format!("{base}/robots.txt"))
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .text()
+            .map_err(|e| e.to_string())?;
+        if !robots.contains(&format!("Sitemap: {base}/sitemap.xml")) {
+            return Err("robots.txt did not advertise an absolute sitemap URL".into());
+        }
+
+        let sitemap = client
+            .get(format!("{base}/sitemap.xml"))
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .text()
+            .map_err(|e| e.to_string())?;
+        if !sitemap.contains("<lastmod>") {
+            return Err("sitemap did not include lastmod metadata".into());
+        }
+        if sitemap.contains(&format!("<loc>{base}/</loc>")) {
+            return Err("sitemap must not advertise the private application root".into());
+        }
+
+        let llms = client
+            .get(format!("{base}/llms.txt"))
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|e| e.to_string())?
+            .text()
+            .map_err(|e| e.to_string())?;
+        if !llms.contains(&format!("/notes/{note_id}.md")) {
+            return Err("llms.txt did not list the published Markdown route".into());
+        }
+        for discovery_path in ["/contracts", "/sitemap.xml"] {
+            if !llms.contains(discovery_path) {
+                return Err(format!("llms.txt did not list {discovery_path}"));
+            }
         }
 
         println!("local end-to-end smoke passed");
@@ -629,33 +804,49 @@ fn template_check() -> Result<(), String> {
         "Cargo.toml",
         ".cargo/config.toml",
         "crates/xtask/src/main.rs",
-        "public/app.js",
-        "public/app.css",
+        "public/assets/app.js",
+        "public/assets/app.css",
         "public/sw.js",
+        "public/offline.html",
+        "public/_headers",
         "public/manifest.webmanifest",
-        "public/vendor/htmx.min.js",
-        "public/vendor/response-targets.js",
-        "public/vendor/pico.min.css",
+        "public/assets/vendor/htmx-2.0.10.min.js",
+        "public/assets/vendor/response-targets-2.0.4.js",
+        "crates/templates/templates/layouts/base.html",
+        "crates/templates/templates/pages/design_system.html",
+        "workers/app/src/routes/notes.rs",
+        "workers/app/src/routes/public.rs",
+        "workers/app/src/routes/system.rs",
         "workers/app/wrangler.jsonc",
         "workers/jobs/wrangler.jsonc",
         "docs/AUTH.md",
         "docs/SECRETS.md",
         ".github/workflows/ci.yml",
         ".github/workflows/security.yml",
+        ".github/lighthouse/budgets.json",
     ];
     for f in required {
         if !Path::new(f).exists() {
             return Err(format!("required starter file missing: {f}"));
         }
     }
-    let app = fs::read_to_string("public/app.js").map_err(|e| e.to_string())?;
+    let app = fs::read_to_string("public/assets/app.js").map_err(|e| e.to_string())?;
     if app.contains("DOMContentLoaded") {
         return Err("app.js must not rely on DOMContentLoaded component listeners; use event delegation/HTMX lifecycle hooks".into());
     }
     if !app.contains("htmx.onLoad") || !app.contains("document.addEventListener") {
         return Err("app.js must demonstrate both HTMX lifecycle-safe initialization and document-level event delegation".into());
     }
-    let tpl = fs::read_to_string("crates/templates/src/lib.rs").map_err(|e| e.to_string())?;
+    if !app.contains("fetch('/session/csrf'") {
+        return Err("offline replay must fetch a current CSRF token before synchronization".into());
+    }
+    if app.contains("payload.csrf_token") || app.contains("csrf_token:csrf") {
+        return Err("IndexedDB operations must never persist CSRF credentials".into());
+    }
+    let tpl = fs::read_to_string("crates/templates/templates/layouts/base.html")
+        .map_err(|e| e.to_string())?
+        + &fs::read_to_string("crates/templates/templates/pages/home.html")
+            .map_err(|e| e.to_string())?;
     for needle in [
         "hx-ext=\"response-targets\"",
         "details",
@@ -674,6 +865,63 @@ fn template_check() -> Result<(), String> {
     }
     if !sw.contains("SKIP_WAITING") || !app.contains("data-update-pwa") {
         return Err("PWA must include an explicit update lifecycle".into());
+    }
+    if sw.contains("csrf") || !sw.contains("/offline.html") {
+        return Err("service worker must use the static, token-free offline fallback".into());
+    }
+    let css = fs::read("public/assets/app.css").map_err(|e| e.to_string())?;
+    if css.len() > 24 * 1024 {
+        return Err(format!(
+            "starter-owned CSS exceeds 24 KiB budget: {} bytes",
+            css.len()
+        ));
+    }
+    if fs::metadata("public/assets/app.js")
+        .map_err(|e| e.to_string())?
+        .len()
+        > 8 * 1024
+    {
+        return Err("starter-owned JavaScript exceeds 8 KiB budget".into());
+    }
+    let css_text = String::from_utf8(css).map_err(|e| e.to_string())?;
+    if css_text.contains("[data-empty-label]:empty{display:none}") {
+        return Err("empty-state labels must remain visible".into());
+    }
+    if !css_text.contains("@media(pointer:coarse){.button,.button.compact") {
+        return Err("compact buttons must retain 44px coarse-pointer targets".into());
+    }
+    if !css_text.contains(".prose p{white-space:pre-wrap}") {
+        return Err("published prose must preserve authored line breaks".into());
+    }
+    let cargo = fs::read_to_string("Cargo.toml").map_err(|e| e.to_string())?;
+    if cargo.contains("maud") || Path::new("public/vendor/pico.min.css").exists() {
+        return Err("Maud and Pico must be absent from the starter".into());
+    }
+    let wrangler = fs::read_to_string("workers/app/wrangler.jsonc").map_err(|e| e.to_string())?;
+    if !wrangler.contains("\"assets\"") || !wrangler.contains("\"cache\"") {
+        return Err("app Worker must configure Static Assets and Workers Caching".into());
+    }
+    let worker_source = fs::read_to_string("workers/app/src/lib.rs").map_err(|e| e.to_string())?;
+    if worker_source.contains("include_str!") || worker_source.contains("include_bytes!") {
+        return Err("browser assets must be served by Static Assets, not embedded in Rust".into());
+    }
+    for route in [
+        "workers/app/src/routes/notes.rs",
+        "workers/app/src/routes/uploads.rs",
+    ] {
+        let source = fs::read_to_string(route).map_err(|e| e.to_string())?;
+        if source.contains("Response::error") {
+            return Err(format!(
+                "private route errors must use the central no-store response policy: {route}"
+            ));
+        }
+    }
+    let headers = fs::read_to_string("public/_headers").map_err(|e| e.to_string())?;
+    if !headers.contains("immutable") || !headers.contains("Content-Security-Policy") {
+        return Err("static assets must define immutable vendor caching and CSP".into());
+    }
+    if !sw.contains("event.waitUntil(revalidate") {
+        return Err("service-worker background revalidation must extend the event lifetime".into());
     }
     let manifest: serde_json::Value = serde_json::from_str(
         &fs::read_to_string("public/manifest.webmanifest").map_err(|e| e.to_string())?,
@@ -724,9 +972,76 @@ fn template_check() -> Result<(), String> {
         "R2",
         "Queues",
         "AGENTS.md",
+        "Askama",
+        "/design-system",
+        "Cloudflare Static Assets",
     ] {
         if !readme.contains(needle) {
             return Err(format!("README missing required guidance: {needle}"));
+        }
+    }
+    let ci = fs::read_to_string(".github/workflows/ci.yml").map_err(|e| e.to_string())?;
+    if !ci.contains("cargo test -p starter-app-worker") {
+        return Err("CI must run native Worker response-policy tests".into());
+    }
+    let active_docs = [
+        "README.md",
+        "AGENTS.md",
+        "CONTRIBUTING.md",
+        "CHANGELOG.md",
+        "CLAUDE.md",
+        "CODEX.md",
+        "OMNIAGENT.md",
+        "SECURITY.md",
+        "THIRD_PARTY_NOTICES.md",
+        ".github/pull_request_template.md",
+        "docs/ARCHITECTURE.md",
+        "docs/AUTH.md",
+        "docs/COMMANDS.md",
+        "docs/CONTRACTS.md",
+        "docs/DEPLOYMENT.md",
+        "docs/EXTENDING.md",
+        "docs/LOCAL_DEVELOPMENT.md",
+        "docs/SECRETS.md",
+        "docs/SECURITY.md",
+    ];
+    for path in active_docs {
+        let source = fs::read_to_string(path).map_err(|e| e.to_string())?;
+        for banned in [
+            "Maud",
+            "maud",
+            "Pico CSS",
+            "pico.min.css",
+            "public/app.css",
+            "public/app.js",
+            "public/vendor/",
+        ] {
+            if source.contains(banned) {
+                return Err(format!(
+                    "obsolete starter reference {banned:?} remains in {path}"
+                ));
+            }
+        }
+    }
+    for (path, needles) in [
+        (
+            "README.md",
+            &["Five-minute start", "Choose your path", "CONTRIBUTING.md"][..],
+        ),
+        (
+            "AGENTS.md",
+            &["## Documentation rules", "## Completion"][..],
+        ),
+        (
+            "CONTRIBUTING.md",
+            &["## First contribution", "## Pull request checklist"][..],
+        ),
+    ] {
+        let source = fs::read_to_string(path).map_err(|error| error.to_string())?;
+        for needle in needles {
+            if !source.contains(needle) {
+                return Err(format!("{path} missing documentation contract: {needle}"));
+            }
         }
     }
     println!("template checks passed");
@@ -797,6 +1112,10 @@ fn humanize(s: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+fn compact_title(value: &str) -> String {
+    value.chars().take(12).collect()
+}
 fn copy_tree(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for ent in fs::read_dir(src)? {
@@ -823,9 +1142,13 @@ fn replace_all(root: &Path, name: &str, title: &str, github: Option<&str>) -> Re
     // Longest prefix first: `cloudflare-rust-htmx-starter` contains
     // `rust-htmx-starter`, so replacing the short form first would corrupt
     // generated names (e.g. `cloudflare-my-product-app`).
+    let short_title = compact_title(title);
     let replacements = [
         ("cloudflare-rust-htmx-starter", name),
+        ("Rust + HTMX Cloudflare Starter", title),
         ("Rust + HTMX Starter", title),
+        ("Evidence Notes", title),
+        ("RustHTMX", short_title.as_str()),
         ("rust-htmx-starter", name),
     ];
     fn walk(p: &Path, reps: &[(&str, &str)], github: Option<&str>) -> Result<(), String> {
@@ -845,6 +1168,7 @@ fn replace_all(root: &Path, name: &str, title: &str, github: Option<&str>) -> Re
                     "js",
                     "yml",
                     "yaml",
+                    "html",
                     "webmanifest",
                     "txt",
                     "example",
@@ -939,6 +1263,56 @@ fn template_smoke() -> Result<(), String> {
     }
     if dir.join(".cloudflare.env").exists() || dir.join(".dev.vars").exists() {
         return Err("generator smoke copied credential files".into());
+    }
+    for path in [
+        "public/assets/app.css",
+        "public/assets/vendor/htmx-2.0.10.min.js",
+        "crates/templates/templates/layouts/base.html",
+        "crates/templates/templates/pages/design_system.html",
+        "workers/app/src/routes/system.rs",
+        ".github/lighthouse/budgets.json",
+    ] {
+        if !dir.join(path).is_file() {
+            return Err(format!("generator smoke missing new starter path: {path}"));
+        }
+    }
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(dir.join("public/manifest.webmanifest")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    if manifest["name"] != "Sample Product" || manifest["short_name"] != "Sample Produ" {
+        return Err("generator smoke did not rewrite full and compact PWA names".into());
+    }
+    for path in [
+        "crates/templates/templates/layouts/base.html",
+        "crates/templates/templates/pages/home.html",
+        "public/offline.html",
+        "crates/templates/src/pages.rs",
+    ] {
+        let source = fs::read_to_string(dir.join(path)).map_err(|e| e.to_string())?;
+        if !source.contains("Sample Product") || source.contains("Evidence Notes") {
+            return Err(format!("generator smoke left demo branding in {path}"));
+        }
+    }
+    for (path, needles) in [
+        ("README.md", &["Five-minute start", "Choose your path"][..]),
+        (
+            "AGENTS.md",
+            &["## Documentation rules", "## Completion"][..],
+        ),
+        (
+            "CONTRIBUTING.md",
+            &["## First contribution", "## Pull request checklist"][..],
+        ),
+    ] {
+        let source = fs::read_to_string(dir.join(path)).map_err(|error| error.to_string())?;
+        for needle in needles {
+            if !source.contains(needle) {
+                return Err(format!(
+                    "generated {path} missing onboarding contract: {needle}"
+                ));
+            }
+        }
     }
     fs::remove_dir_all(&dir).ok();
     println!("generator smoke passed");
@@ -1092,5 +1466,24 @@ mod tests {
     #[test]
     fn humanize_turns_slug_into_title() {
         assert_eq!(humanize("my-product"), "My Product");
+    }
+
+    #[test]
+    fn compact_title_is_character_safe_and_bounded() {
+        assert_eq!(compact_title("My Product"), "My Product");
+        assert_eq!(compact_title("Evidence Workspace"), "Evidence Wor");
+        assert_eq!(compact_title("ééééééééééééé"), "éééééééééééé");
+    }
+
+    #[test]
+    fn help_lists_every_supported_command() {
+        let help = help_text();
+        for command in [
+            "cargo xtask check",
+            "cargo xtask smoke",
+            "cargo xtask migrate-local",
+        ] {
+            assert!(help.contains(command), "help is missing {command}");
+        }
     }
 }

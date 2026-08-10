@@ -1,6 +1,17 @@
 # Authentication boundary
 
+Use this guide before storing real user, tenant or workspace data. The starter supplies owner-scoped data access and fail-closed CSRF mechanics, but deliberately does not choose an identity provider or production session model for you.
+
 The Evidence Notes example is intentionally **unauthenticated** so the starter does not force a universal identity provider or session model. `Cache-Control: no-store` is a caching policy, not access control.
+
+## Before real user data
+
+- Choose how requests establish identity and how sessions are created, rotated and revoked.
+- Replace the development `x-user-id`/`DEV_USER_ID` path with verified server-side identity.
+- Keep owner/workspace authorization in every repository read and mutation.
+- Decide which data, if any, may be stored offline on a user device.
+- Threat-model account recovery, invitation, role change and cross-tenant access.
+- Add integration/e2e coverage for anonymous, authorized, forbidden and stale-session requests.
 
 ## What is already enforced: ownership scoping
 
@@ -13,7 +24,7 @@ The data model is owner-scoped even though no identity provider is wired up. Eve
 - Public surfaces (published HTML/Markdown/JSON, sitemap, robots) intentionally remain owner-independent.
 - `owner_id` is deliberately **not** part of the public `Note` contract — published representations must not leak the owner's identity.
 
-Until real auth lands, the caller presents an `x-user-id` header that the app worker resolves into the request's owner context (`current_user` in `workers/app/src/lib.rs`). This is a **developer placeholder, not a credential** — anyone can set it. Replacing it with real authentication must keep the same shape: resolve a user identity per request, then pass it through the same repository functions. The offline outbox replay (`public/app.js`) forwards the same header from `localStorage` when present, so it automatically carries whatever auth context the browser has once real auth populates it.
+Until real auth lands, the caller presents an `x-user-id` header that the app worker resolves into the request's owner context (`current_user` in `workers/app/src/auth.rs`). This is a **developer placeholder, not a credential** — anyone can set it. Replacing it with real authentication must keep the same shape: resolve a user identity per request, then pass it through the same repository functions. The offline outbox replay (`public/assets/app.js`) forwards the same header from `localStorage` when present, so it automatically carries whatever auth context the browser has once real auth populates it.
 
 For local development the worker also reads a `DEV_USER_ID` var (empty in the committed `wrangler.jsonc`; override it in the ignored `workers/app/.dev.vars`, e.g. `DEV_USER_ID=11111111-1111-4111-8111-111111111111`) so the browser demo needs no header injection. Wrangler loads `.dev.vars` from the config file's directory, so the file lives next to `workers/app/wrangler.jsonc`. Never set `DEV_USER_ID` in a production deployment — it is a dev-only stand-in for the header.
 
@@ -22,13 +33,13 @@ For local development the worker also reads a `DEV_USER_ID` var (empty in the co
 State-changing routes (`create`, `summarize`, `publish`, `upload`) are protected by a stateless double-submit token — no session table, no crypto dependency:
 
 1. **Mint** — the worker generates a 64-hex-char token (two UUIDv4 values from Web Crypto's CSPRNG) and sets it as a `csrf_token` cookie: `HttpOnly; SameSite=Lax; Secure; Path=/`.
-2. **Embed** — every state-changing form renders the same token as a hidden `csrf_token` field (`crates/templates`: `home`, `note_card`, `offline_page`). No inline scripts are involved, so the CSP is unaffected.
+2. **Embed** — every online state-changing form renders the same token as a hidden `csrf_token` field (`crates/templates/templates/`). No inline scripts are involved, so the CSP is unaffected.
 3. **Validate** — on POST the worker compares the submitted field to the cookie in constant time (`crates/domain::csrf_token_valid` / `constant_time_eq`) and returns a `403` `ApiError` on mismatch, before any business logic runs.
-4. **Enforce when it matters** — the check runs only when a `csrf_token` cookie is present on the request. That is exactly when cookie-session auth is live: with the dev `x-user-id` header no cookie is sent, so nothing is skipped in production once sessions exist. No feature flag needed — cookie presence is the flag.
+4. **Fail closed** — every mutation requires both the `csrf_token` cookie and a matching form field. Missing or mismatched tokens return `403`, including for header-authenticated development and API requests. Clients must fetch `GET /session/csrf` before their first mutation; this keeps the same boundary safe when cookie-session authentication is added later.
 
 **HTMX compatibility:** hidden inputs are serialized by HTMX like any field, and every fragment (`note_card`) is rendered per-request with the session's current token, so swapped-in forms are always valid. Do not add a token-carrying header — that is the kind of "HTMX header as CSRF" shortcut this document warns against.
 
-**Offline replay:** the outbox capture reads the token from the form's hidden field and stores it with the operation; the replay includes it alongside the cookies it sends same-origin. If the session rotated while offline, the replay receives a `403` and is kept in the outbox flagged "sync needs attention" — safe, and surfaced to the user rather than silently dropped.
+**Offline replay:** IndexedDB stores only the operation id and intentionally offline-capable note fields; it never stores CSRF or session credentials. When connectivity returns, replay first calls authenticated `GET /session/csrf`, which returns a current token with `Cache-Control: no-store`, then submits each queued operation with that token and its stable operation id. A failed 4xx replay remains in the outbox as "sync needs attention" rather than being silently discarded.
 
 **When cookie auth lands:** set the session cookie alongside this one (or reuse it as the session marker), and swap `current_user` to read the session instead of `x-user-id`. The CSRF layer, templates, and replay need no further changes.
 
@@ -41,3 +52,7 @@ Before storing real user/workspace data, choose authentication explicitly:
 Authorization must be enforced in the Rust Worker/repository boundary on every read and mutation. Never rely on hidden buttons, route obscurity, robots rules, or client-side checks.
 
 Do not place application secrets in source control. For deployed Workers use Cloudflare secrets (for example `wrangler secret put NAME`); for local runtime secrets use an ignored `.dev.vars`. Keep `CLOUDFLARE_API_TOKEN` separate: it is a control-plane credential and must never become a Worker runtime binding.
+
+## Next step
+
+Continue with [Security architecture](SECURITY.md) for the production checklist and [Secrets](SECRETS.md) for credential placement. Update the e2e harness when replacing the development identity so it exercises the real session and CSRF flow.

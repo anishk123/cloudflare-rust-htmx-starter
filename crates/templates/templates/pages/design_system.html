@@ -1,0 +1,26 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<header class="page-heading">
+  <div><p class="eyebrow">Living reference</p><h1>Quiet Product</h1><p class="lede">The native components, interaction states, and layout primitives available to every generated application.</p></div>
+  <span class="badge neutral">No CSS framework</span>
+</header>
+
+<section class="showcase-section"><div class="section-heading"><div><p class="eyebrow">Actions</p><h2>Buttons and badges</h2></div></div>
+  <div class="component-row"><button class="button primary">Primary</button><button class="button secondary">Secondary</button><button class="button ghost">Ghost</button><button class="button danger">Destructive</button><button class="button primary" disabled>Disabled</button></div>
+  <div class="component-row"><span class="badge neutral">Draft</span><span class="badge success">Published</span><span class="badge warning">Needs review</span><span class="badge danger">Failed</span></div>
+</section>
+
+<section class="showcase-section"><div class="section-heading"><div><p class="eyebrow">Input</p><h2>Form controls</h2></div></div>
+  <div class="showcase-grid"><div class="field"><label for="sample-title">Title</label><input id="sample-title" value="Readable defaults"><small>Helpful guidance remains close to its control.</small></div><div class="field"><label for="sample-state">State</label><select id="sample-state"><option>Ready</option><option>Processing</option></select></div></div>
+  <label class="check"><input type="checkbox" checked><span>Send a completion notification</span></label>
+</section>
+
+<section class="showcase-section"><div class="section-heading"><div><p class="eyebrow">Feedback</p><h2>Alerts and progress</h2></div></div>
+  <div class="stack"><div class="alert success"><strong>Published.</strong><p>The canonical representations are available.</p></div><div class="alert warning"><strong>Still processing.</strong><p>The background job may run more than once safely.</p></div><progress value="62" max="100">62%</progress></div>
+</section>
+
+<section class="showcase-section"><div class="section-heading"><div><p class="eyebrow">Disclosure</p><h2>Native interaction</h2></div></div>
+  <details><summary>Why no component runtime?</summary><p>Native elements provide keyboard behavior, semantics, validation, and progressive enhancement without hydration.</p></details>
+</section>
+{% endblock %}

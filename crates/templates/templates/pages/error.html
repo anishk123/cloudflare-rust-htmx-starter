@@ -1,0 +1,11 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<section class="centered-state">
+  <div class="state-icon" aria-hidden="true">!</div>
+  <p class="eyebrow">Request interrupted</p>
+  <h1>{{ heading }}</h1>
+  <p>{{ message }}</p>
+  <a href="/" class="button primary">Return home</a>
+</section>
+{% endblock %}

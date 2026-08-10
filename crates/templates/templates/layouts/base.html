@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0f1420" media="(prefers-color-scheme: dark)">
+    <meta name="color-scheme" content="light dark">
+    <meta name="description" content="{{ meta.description }}">
+    <meta property="og:title" content="{{ meta.title }}">
+    <meta property="og:description" content="{{ meta.description }}">
+    <meta property="og:type" content="{{ meta.og_type }}">
+    <meta property="og:url" content="{{ meta.canonical_url }}">
+    <title>{{ meta.title }}</title>
+    <link rel="canonical" href="{{ meta.canonical_url }}">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="stylesheet" href="/assets/app.css">
+    {% match meta.json_ld %}
+      {% when Some with (json_ld) %}<script type="application/ld+json">{{ json_ld|safe }}</script>
+      {% when None %}
+    {% endmatch %}
+    <script src="/assets/vendor/htmx-2.0.10.min.js" defer></script>
+    <script src="/assets/vendor/response-targets-2.0.4.js" defer></script>
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body hx-boost="true" hx-ext="response-targets" hx-target-error="#app-errors">
+    <div class="app-shell">
+      <aside class="app-sidebar" aria-label="Application">
+        <a href="/" class="brand" aria-label="Evidence Notes home">
+          <span class="brand-mark" aria-hidden="true">E</span>
+          <span>Evidence Notes</span>
+        </a>
+        <nav class="primary-nav" aria-label="Primary">
+          <a href="/" class="nav-link"><span aria-hidden="true">⌂</span><span>Notes</span></a>
+          <a href="/design-system" class="nav-link"><span aria-hidden="true">◇</span><span>Design system</span></a>
+          <a href="/contracts" class="nav-link"><span aria-hidden="true">{ }</span><span>Contracts</span></a>
+        </nav>
+        <div class="sidebar-note">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span>Rust at the edge</span>
+        </div>
+      </aside>
+
+      <header class="app-header">
+        <a href="/" class="brand mobile-only" aria-label="Evidence Notes home">
+          <span class="brand-mark" aria-hidden="true">E</span>
+          <span>Evidence Notes</span>
+        </a>
+        <div class="header-actions">
+          <span class="connection-pill" id="connection-status" role="status"></span>
+          <button type="button" class="button secondary compact" data-install-pwa hidden>Install app</button>
+          <details class="menu">
+            <summary class="button ghost compact">Help</summary>
+            <div class="menu-panel">
+              <a href="/design-system">Design system</a>
+              <a href="/contracts">Contracts</a>
+              <a href="/llms.txt">llms.txt</a>
+            </div>
+          </details>
+        </div>
+      </header>
+
+      <main class="app-main" id="main-content">
+        <div id="app-errors" class="app-errors" role="alert" aria-live="assertive"></div>
+        <div class="page-container">{% block content %}{% endblock %}</div>
+      </main>
+    </div>
+
+    <div class="toast-region" aria-live="polite">
+      <button type="button" class="button secondary" data-update-pwa hidden>Update available · reload</button>
+    </div>
+  </body>
+</html>

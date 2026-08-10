@@ -4,5 +4,7 @@
 **/.dev.vars
 /.cloudflare.env
 /.freebuff
+/.superpowers/
+/.worktrees/
 .DS_Store
 docs/superpowers/
