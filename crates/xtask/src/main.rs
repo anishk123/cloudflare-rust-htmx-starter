@@ -705,6 +705,21 @@ fn template_check() -> Result<(), String> {
     if !wrangler.contains("\"assets\"") || !wrangler.contains("\"cache\"") {
         return Err("app Worker must configure Static Assets and Workers Caching".into());
     }
+    let worker_source = fs::read_to_string("workers/app/src/lib.rs").map_err(|e| e.to_string())?;
+    if worker_source.contains("include_str!") || worker_source.contains("include_bytes!") {
+        return Err("browser assets must be served by Static Assets, not embedded in Rust".into());
+    }
+    for route in [
+        "workers/app/src/routes/notes.rs",
+        "workers/app/src/routes/uploads.rs",
+    ] {
+        let source = fs::read_to_string(route).map_err(|e| e.to_string())?;
+        if source.contains("Response::error") {
+            return Err(format!(
+                "private route errors must use the central no-store response policy: {route}"
+            ));
+        }
+    }
     let headers = fs::read_to_string("public/_headers").map_err(|e| e.to_string())?;
     if !headers.contains("immutable") || !headers.contains("Content-Security-Policy") {
         return Err("static assets must define immutable vendor caching and CSP".into());
