@@ -39,16 +39,13 @@ self.addEventListener('fetch', event => {
   }
   if (url.origin !== self.location.origin) return;
 
-  event.respondWith(
-    caches.match(request).then(cached => {
-      const fresh = fetch(request).then(response => {
-        if (response.ok && url.pathname.startsWith('/assets/')) {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put(request, copy));
-        }
-        return response;
-      });
-      return cached || fresh;
-    }),
-  );
+  const revalidate = fetch(request).then(response => {
+    if (response.ok && url.pathname.startsWith('/assets/')) {
+      const copy = response.clone();
+      return caches.open(CACHE).then(cache => cache.put(request, copy)).then(() => response);
+    }
+    return response;
+  });
+  event.waitUntil(revalidate.then(() => undefined, () => undefined));
+  event.respondWith(caches.match(request).then(cached => cached || revalidate));
 });

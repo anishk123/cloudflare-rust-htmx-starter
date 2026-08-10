@@ -250,6 +250,8 @@ fn test() -> Result<(), String> {
     tests.args([
         "test",
         "-p",
+        "starter-app-worker",
+        "-p",
         "starter-contracts",
         "-p",
         "starter-domain",
@@ -468,6 +470,60 @@ fn e2e() -> Result<(), String> {
             return Err("local Workers did not become ready within 20 seconds".into());
         }
 
+        let missing_csrf = client
+            .post(format!("{base}/notes"))
+            .form(&[("title", "Missing CSRF"), ("body", "Must be rejected")])
+            .send()
+            .map_err(|e| e.to_string())?;
+        if missing_csrf.status().as_u16() != 403 {
+            return Err(format!(
+                "mutation without CSRF state expected 403, got {}",
+                missing_csrf.status()
+            ));
+        }
+
+        let csrf_response = client
+            .get(format!("{base}/session/csrf"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if csrf_response
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            != Some("no-store")
+        {
+            return Err("CSRF endpoint must be no-store".into());
+        }
+        let csrf_cookie = csrf_response
+            .headers()
+            .get("set-cookie")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .ok_or("CSRF endpoint did not mint a cookie")?
+            .to_string();
+        let csrf_body = csrf_response.text().map_err(|e| e.to_string())?;
+        let csrf_token = serde_json::from_str::<serde_json::Value>(&csrf_body)
+            .map_err(|e| e.to_string())?["csrf_token"]
+            .as_str()
+            .ok_or("CSRF endpoint did not return a token")?
+            .to_string();
+        let mismatched_csrf = client
+            .post(format!("{base}/notes"))
+            .header("cookie", &csrf_cookie)
+            .form(&[
+                ("title", "Mismatched CSRF"),
+                ("body", "Must be rejected"),
+                ("csrf_token", "wrong"),
+            ])
+            .send()
+            .map_err(|e| e.to_string())?;
+        if mismatched_csrf.status().as_u16() != 403 {
+            return Err(format!(
+                "mutation with mismatched CSRF expected 403, got {}",
+                mismatched_csrf.status()
+            ));
+        }
+
         let home_response = client
             .get(format!("{base}/"))
             .send()
@@ -487,7 +543,12 @@ fn e2e() -> Result<(), String> {
 
         let create = client
             .post(format!("{base}/notes"))
-            .form(&[("title", "E2E note"), ("body", "Queue and D1 smoke test")])
+            .header("cookie", &csrf_cookie)
+            .form(&[
+                ("title", "E2E note"),
+                ("body", "Queue and D1 smoke test"),
+                ("csrf_token", csrf_token.as_str()),
+            ])
             .send()
             .map_err(|e| e.to_string())?;
         if create.status().as_u16() != 303 {
@@ -519,8 +580,26 @@ fn e2e() -> Result<(), String> {
         }
         let note_id = note_id.ok_or("created note not found in home HTML")?;
 
+        let draft_public = client
+            .get(format!("{base}/notes/{note_id}/e2e-note"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if draft_public.status().as_u16() != 404 {
+            return Err("draft note unexpectedly appeared on a public route".into());
+        }
+        if draft_public
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok())
+            != Some("no-store")
+        {
+            return Err("negative public responses must not be cached".into());
+        }
+
         let summarize = client
             .post(format!("{base}/notes/{note_id}/summarize"))
+            .header("cookie", &csrf_cookie)
+            .form(&[("csrf_token", csrf_token.as_str())])
             .send()
             .map_err(|e| e.to_string())?;
         if summarize.status().as_u16() != 303 {
@@ -549,6 +628,8 @@ fn e2e() -> Result<(), String> {
 
         let publish = client
             .post(format!("{base}/notes/{note_id}/publish"))
+            .header("cookie", &csrf_cookie)
+            .form(&[("csrf_token", csrf_token.as_str())])
             .send()
             .map_err(|e| e.to_string())?;
         if publish.status().as_u16() != 303 {
@@ -564,6 +645,31 @@ fn e2e() -> Result<(), String> {
         let body = public.text().map_err(|e| e.to_string())?;
         if !body.contains("\"status\":\"published\"") {
             return Err("public JSON did not expose published status".into());
+        }
+
+        let malformed_public = client
+            .get(format!("{base}/notes/not-a-uuid/malformed"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if malformed_public.status().as_u16() != 404 {
+            return Err(format!(
+                "malformed public note id expected 404, got {}",
+                malformed_public.status()
+            ));
+        }
+
+        let wrong_slug = client
+            .get(format!("{base}/notes/{note_id}/wrong-slug"))
+            .send()
+            .map_err(|e| e.to_string())?;
+        if wrong_slug.status().as_u16() != 308
+            || wrong_slug
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok())
+                != Some(format!("{base}/notes/{note_id}/e2e-note").as_str())
+        {
+            return Err("non-canonical public slug did not redirect permanently".into());
         }
 
         let public_html = client
@@ -608,6 +714,9 @@ fn e2e() -> Result<(), String> {
         if !sitemap.contains("<lastmod>") {
             return Err("sitemap did not include lastmod metadata".into());
         }
+        if sitemap.contains(&format!("<loc>{base}/</loc>")) {
+            return Err("sitemap must not advertise the private application root".into());
+        }
 
         let llms = client
             .get(format!("{base}/llms.txt"))
@@ -618,6 +727,11 @@ fn e2e() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
         if !llms.contains(&format!("/notes/{note_id}.md")) {
             return Err("llms.txt did not list the published Markdown route".into());
+        }
+        for discovery_path in ["/contracts", "/sitemap.xml"] {
+            if !llms.contains(discovery_path) {
+                return Err(format!("llms.txt did not list {discovery_path}"));
+            }
         }
 
         println!("local end-to-end smoke passed");
@@ -762,6 +876,16 @@ fn template_check() -> Result<(), String> {
     {
         return Err("starter-owned JavaScript exceeds 8 KiB budget".into());
     }
+    let css_text = String::from_utf8(css).map_err(|e| e.to_string())?;
+    if css_text.contains("[data-empty-label]:empty{display:none}") {
+        return Err("empty-state labels must remain visible".into());
+    }
+    if !css_text.contains("@media(pointer:coarse){.button,.button.compact") {
+        return Err("compact buttons must retain 44px coarse-pointer targets".into());
+    }
+    if !css_text.contains(".prose p{white-space:pre-wrap}") {
+        return Err("published prose must preserve authored line breaks".into());
+    }
     let cargo = fs::read_to_string("Cargo.toml").map_err(|e| e.to_string())?;
     if cargo.contains("maud") || Path::new("public/vendor/pico.min.css").exists() {
         return Err("Maud and Pico must be absent from the starter".into());
@@ -788,6 +912,9 @@ fn template_check() -> Result<(), String> {
     let headers = fs::read_to_string("public/_headers").map_err(|e| e.to_string())?;
     if !headers.contains("immutable") || !headers.contains("Content-Security-Policy") {
         return Err("static assets must define immutable vendor caching and CSP".into());
+    }
+    if !sw.contains("event.waitUntil(revalidate") {
+        return Err("service-worker background revalidation must extend the event lifetime".into());
     }
     let manifest: serde_json::Value = serde_json::from_str(
         &fs::read_to_string("public/manifest.webmanifest").map_err(|e| e.to_string())?,
@@ -845,6 +972,10 @@ fn template_check() -> Result<(), String> {
         if !readme.contains(needle) {
             return Err(format!("README missing required guidance: {needle}"));
         }
+    }
+    let ci = fs::read_to_string(".github/workflows/ci.yml").map_err(|e| e.to_string())?;
+    if !ci.contains("cargo test -p starter-app-worker") {
+        return Err("CI must run native Worker response-policy tests".into());
     }
     for path in [
         "README.md",
@@ -940,6 +1071,10 @@ fn humanize(s: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+
+fn compact_title(value: &str) -> String {
+    value.chars().take(12).collect()
+}
 fn copy_tree(src: &Path, dst: &Path) -> io::Result<()> {
     fs::create_dir_all(dst)?;
     for ent in fs::read_dir(src)? {
@@ -966,10 +1101,13 @@ fn replace_all(root: &Path, name: &str, title: &str, github: Option<&str>) -> Re
     // Longest prefix first: `cloudflare-rust-htmx-starter` contains
     // `rust-htmx-starter`, so replacing the short form first would corrupt
     // generated names (e.g. `cloudflare-my-product-app`).
+    let short_title = compact_title(title);
     let replacements = [
         ("cloudflare-rust-htmx-starter", name),
         ("Rust + HTMX Cloudflare Starter", title),
         ("Rust + HTMX Starter", title),
+        ("Evidence Notes", title),
+        ("RustHTMX", short_title.as_str()),
         ("rust-htmx-starter", name),
     ];
     fn walk(p: &Path, reps: &[(&str, &str)], github: Option<&str>) -> Result<(), String> {
@@ -1097,10 +1235,23 @@ fn template_smoke() -> Result<(), String> {
             return Err(format!("generator smoke missing new starter path: {path}"));
         }
     }
-    let manifest =
-        fs::read_to_string(dir.join("public/manifest.webmanifest")).map_err(|e| e.to_string())?;
-    if !manifest.contains("Sample Product") {
-        return Err("generator smoke did not rewrite product copy".into());
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(dir.join("public/manifest.webmanifest")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    if manifest["name"] != "Sample Product" || manifest["short_name"] != "Sample Produ" {
+        return Err("generator smoke did not rewrite full and compact PWA names".into());
+    }
+    for path in [
+        "crates/templates/templates/layouts/base.html",
+        "crates/templates/templates/pages/home.html",
+        "public/offline.html",
+        "crates/templates/src/pages.rs",
+    ] {
+        let source = fs::read_to_string(dir.join(path)).map_err(|e| e.to_string())?;
+        if !source.contains("Sample Product") || source.contains("Evidence Notes") {
+            return Err(format!("generator smoke left demo branding in {path}"));
+        }
     }
     fs::remove_dir_all(&dir).ok();
     println!("generator smoke passed");
@@ -1254,5 +1405,12 @@ mod tests {
     #[test]
     fn humanize_turns_slug_into_title() {
         assert_eq!(humanize("my-product"), "My Product");
+    }
+
+    #[test]
+    fn compact_title_is_character_safe_and_bounded() {
+        assert_eq!(compact_title("My Product"), "My Product");
+        assert_eq!(compact_title("Evidence Workspace"), "Evidence Wor");
+        assert_eq!(compact_title("ééééééééééééé"), "éééééééééééé");
     }
 }

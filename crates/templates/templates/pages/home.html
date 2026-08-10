@@ -63,6 +63,6 @@
   <span class="hint">Newest first</span>
 </section>
 <div id="notes" class="stack" data-empty-label="No notes yet. Create the first one above.">
-  {% for note in notes %}{% include "fragments/note_card.html" %}{% endfor %}
+  {%- for note in notes %}{% include "fragments/note_card.html" %}{% endfor -%}
 </div>
 {% endblock %}

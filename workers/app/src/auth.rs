@@ -88,14 +88,12 @@ pub(crate) fn csrf_guard(
     form: Option<&FormData>,
     request_id: &str,
 ) -> Result<Option<Response>> {
-    let Some(cookie_token) = csrf_cookie_from(req) else {
-        return Ok(None);
-    };
+    let cookie_token = csrf_cookie_from(req);
     let submitted = form.and_then(|data| match data.get("csrf_token") {
         Some(FormEntry::Field(value)) => Some(value.clone()),
         _ => None,
     });
-    if starter_domain::csrf_token_valid(submitted.as_deref(), Some(&cookie_token)) {
+    if starter_domain::csrf_token_valid(submitted.as_deref(), cookie_token.as_deref()) {
         return Ok(None);
     }
     let body = ApiError {

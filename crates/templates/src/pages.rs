@@ -39,7 +39,7 @@ struct DesignSystemTemplate {
 pub fn render_home(notes: &[Note], csrf_token: &str, origin: &str) -> askama::Result<String> {
     HomeTemplate {
         meta: PageMeta::new(
-            "Evidence Notes · Rust + HTMX Starter",
+            "Evidence Notes",
             "A production-minded Rust and HTMX starter for fast Cloudflare applications.",
             absolute_url(origin, "/"),
         ),
@@ -77,7 +77,7 @@ pub fn render_error_page(heading: &str, message: &str, origin: &str) -> askama::
 pub fn render_design_system(origin: &str) -> askama::Result<String> {
     DesignSystemTemplate {
         meta: PageMeta::new(
-            "Design system · Rust + HTMX Starter",
+            "Design system · Evidence Notes",
             "Quiet Product components and interaction states included with the starter.",
             absolute_url(origin, "/design-system"),
         ),

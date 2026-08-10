@@ -48,7 +48,7 @@ pub(crate) async fn sitemap(req: Request, context: RouteContext<()>) -> Result<R
     let request_id = request_id();
     let origin = req.url()?.origin().ascii_serialization();
     let notes = starter_database::list_published_notes(&context.d1("DB")?).await?;
-    let mut urls = format!("<url><loc>{origin}/</loc></url>");
+    let mut urls = String::new();
     for note in notes {
         urls.push_str(&format!(
             "<url><loc>{origin}/notes/{}/{}</loc><lastmod>{}</lastmod></url>",
@@ -71,8 +71,8 @@ pub(crate) async fn llms(req: Request, context: RouteContext<()>) -> Result<Resp
     let request_id = request_id();
     let origin = req.url()?.origin().ascii_serialization();
     let notes = starter_database::list_published_notes(&context.d1("DB")?).await?;
-    let mut body = String::from(
-        "# Rust + HTMX Starter\n\n> Fast, progressively enhanced applications on Cloudflare with Rust, Askama, and HTMX.\n\n## Published notes\n",
+    let mut body = format!(
+        "# Rust + HTMX Starter\n\n> Fast, progressively enhanced applications on Cloudflare with Rust, Askama, and HTMX.\n\n## Discovery\n\n- [Contract catalog]({origin}/contracts)\n- [Sitemap]({origin}/sitemap.xml)\n\n## Published notes\n"
     );
     if notes.is_empty() {
         body.push_str("\nNo notes have been published yet.\n");

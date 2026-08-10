@@ -53,8 +53,12 @@ pub(crate) fn text(body: &str, content_type: &str) -> Result<Response> {
     Ok(response)
 }
 
-pub(crate) fn not_found(request_id: &str, policy: CachePolicy) -> Result<Response> {
-    secured(Response::error("not found", 404)?, request_id, policy)
+pub(crate) fn not_found(request_id: &str) -> Result<Response> {
+    secured(
+        Response::error("not found", 404)?,
+        request_id,
+        CachePolicy::Private,
+    )
 }
 
 pub(crate) fn client_error(
@@ -81,6 +85,16 @@ pub(crate) fn redirect_303(
     policy: CachePolicy,
 ) -> Result<Response> {
     let mut response = Response::empty()?.with_status(303);
+    response.headers_mut().set("location", location.as_str())?;
+    secured(response, request_id, policy)
+}
+
+pub(crate) fn redirect_308(
+    location: Url,
+    request_id: &str,
+    policy: CachePolicy,
+) -> Result<Response> {
+    let mut response = Response::empty()?.with_status(308);
     response.headers_mut().set("location", location.as_str())?;
     secured(response, request_id, policy)
 }

@@ -24,7 +24,7 @@ State-changing routes (`create`, `summarize`, `publish`, `upload`) are protected
 1. **Mint** — the worker generates a 64-hex-char token (two UUIDv4 values from Web Crypto's CSPRNG) and sets it as a `csrf_token` cookie: `HttpOnly; SameSite=Lax; Secure; Path=/`.
 2. **Embed** — every online state-changing form renders the same token as a hidden `csrf_token` field (`crates/templates/templates/`). No inline scripts are involved, so the CSP is unaffected.
 3. **Validate** — on POST the worker compares the submitted field to the cookie in constant time (`crates/domain::csrf_token_valid` / `constant_time_eq`) and returns a `403` `ApiError` on mismatch, before any business logic runs.
-4. **Enforce when it matters** — the check runs only when a `csrf_token` cookie is present on the request. That is exactly when cookie-session auth is live: with the dev `x-user-id` header no cookie is sent, so nothing is skipped in production once sessions exist. No feature flag needed — cookie presence is the flag.
+4. **Fail closed** — every mutation requires both the `csrf_token` cookie and a matching form field. Missing or mismatched tokens return `403`, including for header-authenticated development and API requests. Clients must fetch `GET /session/csrf` before their first mutation; this keeps the same boundary safe when cookie-session authentication is added later.
 
 **HTMX compatibility:** hidden inputs are serialized by HTMX like any field, and every fragment (`note_card`) is rendered per-request with the session's current token, so swapped-in forms are always valid. Do not add a token-carrying header — that is the kind of "HTMX header as CSRF" shortcut this document warns against.
 

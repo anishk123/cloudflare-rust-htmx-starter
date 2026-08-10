@@ -125,7 +125,7 @@ pub(crate) async fn summarize(mut req: Request, context: RouteContext<()>) -> Re
     let id = route_id(&context)?;
     let database = context.d1("DB")?;
     let Some(note) = starter_database::find_owned_note(&database, id, owner).await? else {
-        return not_found(&request_id, CachePolicy::Private);
+        return not_found(&request_id);
     };
     context
         .env
@@ -168,7 +168,7 @@ pub(crate) async fn publish(mut req: Request, context: RouteContext<()>) -> Resu
     let Some(note) =
         starter_database::publish_note(&database, route_id(&context)?, owner, now_ms()).await?
     else {
-        return not_found(&request_id, CachePolicy::Private);
+        return not_found(&request_id);
     };
     if !htmx {
         return redirect_home(&req, &request_id);

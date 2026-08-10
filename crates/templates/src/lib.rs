@@ -65,4 +65,13 @@ mod tests {
         assert!(html.contains("href=\"/design-system\""));
         assert!(!html.contains("pico"));
     }
+
+    #[test]
+    fn home_empty_state_has_a_truly_empty_notes_container() {
+        let html = render_home(&[], "csrf", "https://example.test").unwrap();
+
+        assert!(html.contains(
+            "<div id=\"notes\" class=\"stack\" data-empty-label=\"No notes yet. Create the first one above.\"></div>"
+        ));
+    }
 }
