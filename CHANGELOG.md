@@ -6,6 +6,7 @@
 - Split the application Worker into focused auth, response-policy, rate-limit and route modules.
 - Hardened CSRF, public/negative caching, canonical publication, SEO/AEO discovery and offline replay boundaries.
 - Added enforced CSS/JavaScript budgets, generator branding checks and progressive human/agent onboarding.
+- Refreshed pinned Rust dependencies and GitHub Actions, including the patched `time` release and current dependency-review tooling.
 
 ## 0.2.0 — 2026-08-08
 - Reduced repository automation to Rust `xtask`; removed Python/package.json application tooling.
