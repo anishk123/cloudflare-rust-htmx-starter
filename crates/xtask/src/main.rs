@@ -1294,6 +1294,26 @@ fn template_smoke() -> Result<(), String> {
             return Err(format!("generator smoke left demo branding in {path}"));
         }
     }
+    for (path, needles) in [
+        ("README.md", &["Five-minute start", "Choose your path"][..]),
+        (
+            "AGENTS.md",
+            &["## Documentation rules", "## Completion"][..],
+        ),
+        (
+            "CONTRIBUTING.md",
+            &["## First contribution", "## Pull request checklist"][..],
+        ),
+    ] {
+        let source = fs::read_to_string(dir.join(path)).map_err(|error| error.to_string())?;
+        for needle in needles {
+            if !source.contains(needle) {
+                return Err(format!(
+                    "generated {path} missing onboarding contract: {needle}"
+                ));
+            }
+        }
+    }
     fs::remove_dir_all(&dir).ok();
     println!("generator smoke passed");
     Ok(())
