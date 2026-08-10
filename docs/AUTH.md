@@ -1,6 +1,17 @@
 # Authentication boundary
 
+Use this guide before storing real user, tenant or workspace data. The starter supplies owner-scoped data access and fail-closed CSRF mechanics, but deliberately does not choose an identity provider or production session model for you.
+
 The Evidence Notes example is intentionally **unauthenticated** so the starter does not force a universal identity provider or session model. `Cache-Control: no-store` is a caching policy, not access control.
+
+## Before real user data
+
+- Choose how requests establish identity and how sessions are created, rotated and revoked.
+- Replace the development `x-user-id`/`DEV_USER_ID` path with verified server-side identity.
+- Keep owner/workspace authorization in every repository read and mutation.
+- Decide which data, if any, may be stored offline on a user device.
+- Threat-model account recovery, invitation, role change and cross-tenant access.
+- Add integration/e2e coverage for anonymous, authorized, forbidden and stale-session requests.
 
 ## What is already enforced: ownership scoping
 
@@ -41,3 +52,7 @@ Before storing real user/workspace data, choose authentication explicitly:
 Authorization must be enforced in the Rust Worker/repository boundary on every read and mutation. Never rely on hidden buttons, route obscurity, robots rules, or client-side checks.
 
 Do not place application secrets in source control. For deployed Workers use Cloudflare secrets (for example `wrangler secret put NAME`); for local runtime secrets use an ignored `.dev.vars`. Keep `CLOUDFLARE_API_TOKEN` separate: it is a control-plane credential and must never become a Worker runtime binding.
+
+## Next step
+
+Continue with [Security architecture](SECURITY.md) for the production checklist and [Secrets](SECRETS.md) for credential placement. Update the e2e harness when replacing the development identity so it exercises the real session and CSRF flow.

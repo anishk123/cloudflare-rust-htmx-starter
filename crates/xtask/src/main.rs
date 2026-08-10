@@ -48,9 +48,8 @@ fn run() -> Result<(), String> {
     }
 }
 
-fn help() {
-    println!(
-        r#"Rust + HTMX Cloudflare Starter
+fn help_text() -> &'static str {
+    r#"Rust + HTMX Cloudflare Starter
 
 Canonical commands:
   cargo xtask bootstrap             Install/check prerequisites + vendor pinned browser assets
@@ -59,11 +58,14 @@ Canonical commands:
   cargo xtask test                  Run Rust tests + static browser/template checks
   cargo xtask e2e                   Boot local Workers and smoke D1 + Queue + public routes
   cargo xtask verify                fmt + clippy + tests + wasm checks + Worker builds
+  cargo xtask check                 Check structural starter/documentation contracts
+  cargo xtask smoke                 Generate a sample app and verify its starter contract
   cargo xtask new NAME [options]    Create a sibling app from this starter
   cargo xtask configure [options]   Rename/configure this clone in place
   cargo xtask auth                  Show Cloudflare token instructions
   cargo xtask whoami                Verify Cloudflare credentials
   cargo xtask provision             Create/reuse D1, R2, Queue, DLQ and write D1 IDs
+  cargo xtask migrate-local         Apply D1 migrations to persistent local state
   cargo xtask migrate               Apply remote D1 migrations
   cargo xtask deploy                Verify, migrate, deploy jobs then app Worker
   cargo xtask versions              Print pinned major component versions
@@ -81,7 +83,10 @@ Wrangler is Cloudflare's required driver. xtask invokes a pinned Wrangler via np
 when a local `wrangler` binary is not available; Node is tooling only, never an
 application runtime or source-language dependency.
 "#
-    );
+}
+
+fn help() {
+    print!("{}", help_text());
 }
 fn versions() {
     println!(
@@ -1448,5 +1453,17 @@ mod tests {
         assert_eq!(compact_title("My Product"), "My Product");
         assert_eq!(compact_title("Evidence Workspace"), "Evidence Wor");
         assert_eq!(compact_title("ééééééééééééé"), "éééééééééééé");
+    }
+
+    #[test]
+    fn help_lists_every_supported_command() {
+        let help = help_text();
+        for command in [
+            "cargo xtask check",
+            "cargo xtask smoke",
+            "cargo xtask migrate-local",
+        ] {
+            assert!(help.contains(command), "help is missing {command}");
+        }
     }
 }
