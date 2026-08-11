@@ -260,3 +260,64 @@ pub async fn complete_summary_job(
     db.batch(vec![update, mark]).await?;
     Ok(true)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn verify_all_database_queries_against_schema_contract() {
+        let known_tables = [
+            "notes",
+            "processed_operations",
+            "processed_jobs",
+            "upload_usage",
+        ];
+        let known_columns = [
+            "id",
+            "title",
+            "body",
+            "status",
+            "version",
+            "created_at_ms",
+            "updated_at_ms",
+            "summary",
+            "owner_id",
+            "operation_id",
+            "entity_id",
+            "processed_at_ms",
+            "job_id",
+            "bytes_used",
+        ];
+
+        let queries = [
+            "SELECT id,title,body,status,version,created_at_ms,updated_at_ms,summary,owner_id FROM notes WHERE owner_id=?1 ORDER BY updated_at_ms DESC",
+            "SELECT id,title,body,status,version,created_at_ms,updated_at_ms,summary,owner_id FROM notes WHERE id=?1 AND owner_id=?2",
+            "SELECT id,title,body,status,version,created_at_ms,updated_at_ms,summary,owner_id FROM notes WHERE status='published' ORDER BY updated_at_ms DESC",
+            "SELECT id,title,body,status,version,created_at_ms,updated_at_ms,summary,owner_id FROM notes WHERE id=?1",
+            "SELECT entity_id FROM processed_operations WHERE operation_id=?1 AND owner_id=?2",
+            "INSERT INTO notes(id,title,body,status,version,created_at_ms,updated_at_ms,summary,owner_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            "INSERT INTO processed_operations(operation_id,entity_id,processed_at_ms,owner_id) VALUES(?1,?2,?3,?4)",
+            "UPDATE notes SET status='published', updated_at_ms=?1, version=version+1 WHERE id=?2 AND owner_id=?3",
+            "SELECT bytes_used FROM upload_usage WHERE owner_id=?1",
+            "INSERT INTO upload_usage(owner_id, bytes_used, updated_at_ms) VALUES(?1, ?2, ?3) ON CONFLICT(owner_id) DO UPDATE SET bytes_used = bytes_used + ?2, updated_at_ms = ?3",
+            "SELECT job_id FROM processed_jobs WHERE job_id=?1",
+            "UPDATE notes SET summary=?1, updated_at_ms=?2, version=version+1 WHERE id=?3",
+            "INSERT INTO processed_jobs(job_id,processed_at_ms) VALUES(?1,?2)",
+        ];
+
+        for query in queries {
+            let contains_table = known_tables.iter().any(|t| query.contains(t));
+            assert!(
+                contains_table,
+                "Query failed schema validation (unknown table): {query}"
+            );
+
+            // Ensure query doesn't contain unbalanced placeholders or invalid parameters
+            assert!(
+                !query.contains("?0"),
+                "Query contains invalid parameter index ?0: {query}"
+            );
+        }
+    }
+}

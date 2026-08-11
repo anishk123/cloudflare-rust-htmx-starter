@@ -5,10 +5,39 @@ use worker::{Env, Error, FormData, FormEntry, Request, Response, Result};
 use crate::http::{CachePolicy, secured};
 
 const CSRF_COOKIE: &str = "csrf_token";
+const SESSION_COOKIE: &str = "app_session";
 
-/// Temporary authentication adapter. Production applications should replace
-/// this boundary with Access, OIDC, or a cookie session (see docs/AUTH.md).
+/// Resolve user identity from Cloudflare Access email, session cookie, or dev identity header.
 pub(crate) fn current_user(req: &Request, env: &Env) -> Result<Uuid> {
+    // 1. Cloudflare Access authenticated email header
+    if let Some(email) = req
+        .headers()
+        .get("cf-access-authenticated-user-email")
+        .ok()
+        .flatten()
+    {
+        let trimmed = email.trim();
+        if !trimmed.is_empty() {
+            return Ok(Uuid::new_v5(&Uuid::NAMESPACE_DNS, trimmed.as_bytes()));
+        }
+    }
+
+    // 2. Session cookie parsing
+    if let Some(cookies) = req.headers().get("cookie").ok().flatten() {
+        for pair in cookies.split(';') {
+            let mut parts = pair.trim().splitn(2, '=');
+            match (parts.next(), parts.next()) {
+                (Some(name), Some(val)) if name == SESSION_COOKIE => {
+                    if let Ok(id) = Uuid::parse_str(val.trim()) {
+                        return Ok(id);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // 3. Development identity fallback (x-user-id header / DEV_USER_ID env var)
     if let Some(raw) = req.headers().get("x-user-id").ok().flatten() {
         return Uuid::parse_str(&raw).map_err(|_| Error::RustError("invalid x-user-id".into()));
     }
@@ -19,7 +48,7 @@ pub(crate) fn current_user(req: &Request, env: &Env) -> Result<Uuid> {
                 .map_err(|_| Error::RustError("invalid DEV_USER_ID".into()));
         }
     }
-    Err(Error::RustError("missing x-user-id".into()))
+    Err(Error::RustError("missing user identity".into()))
 }
 
 pub(crate) fn unauthorized(request_id: &str) -> Result<Response> {

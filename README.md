@@ -13,6 +13,8 @@ Build polished, progressively enhanced Cloudflare applications in Rust—without
 
 This starter gives humans and coding agents the same clear path from first run to production-minded contribution: ordinary external HTML templates, focused Rust modules, native browser behavior, one command surface, and boundaries that stay visible as the product grows.
 
+![Evidence Notes Demo](docs/assets/evidence-notes-demo.gif)
+
 ## What you get
 
 | Need | Included foundation |
@@ -113,24 +115,33 @@ Replace Evidence Notes feature by feature; keep the architecture boundaries and 
 
 ## How the pieces fit
 
-```text
-human / agent / crawler
-          │
-          ▼
-Cloudflare Static Assets ── CSS, tiny JS, icons, offline shell
-          │
-          ▼
-Rust app Worker ── routes ── Askama pages + HTMX fragments
-       │       │       │
-       ▼       ▼       ▼
-      D1      R2    Queue producer
-                         │
-                         ▼
-                  Rust jobs Worker
-                         │
-                         ▼
-                        D1
+```mermaid
+flowchart TB
+  Client["human / agent / crawler<br/>Browser / API / Bot"]
+  Static["Cloudflare Static Assets<br/>CSS, JS, icons, PWA shell"]
+  App["Rust App Worker<br/>routes, Askama pages, HTMX fragments"]
+  D1["Cloudflare D1<br/>prepared relational SQLite"]
+  R2["Cloudflare R2<br/>object storage & uploads"]
+  Queue["Cloudflare Queue<br/>producer / async jobs"]
+  Jobs["Rust Jobs Worker<br/>idempotent background consumer"]
+
+  Client --> Static
+  Static --> App
+  App --> D1
+  App --> R2
+  App --> Queue
+  Queue --> Jobs
+  Jobs --> D1
+
+  style Client fill:#eef6ff,stroke:#3776ab,stroke-width:2px
+  style Static fill:#f5f3ff,stroke:#6d28d9,stroke-width:2px
+  style App fill:#eefdf3,stroke:#16803c,stroke-width:2px
+  style D1 fill:#fff7ed,stroke:#c2410c,stroke-width:2px
+  style R2 fill:#ecfeff,stroke:#0891b2,stroke-width:2px
+  style Queue fill:#fef2f2,stroke:#dc2626,stroke-width:2px
+  style Jobs fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
 ```
+
 
 Cloudflare Static Assets serves browser files ahead of Rust. The app Worker owns HTTP, authentication context, response policy and product coordination. Domain, database and template crates stay independently understandable. Background work is separate only because retries and at-least-once delivery are genuinely different concerns.
 
