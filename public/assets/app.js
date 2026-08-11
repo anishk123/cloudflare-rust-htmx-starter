@@ -13,4 +13,30 @@ if(window.htmx)htmx.onLoad(root=>{root.querySelectorAll('[data-js-ready]').forEa
 function showUpdate(worker){waitingWorker=worker;document.querySelectorAll('[data-update-pwa]').forEach(b=>b.hidden=false)}
 async function registerServiceWorker(){const reg=await navigator.serviceWorker.register('/sw.js');if(reg.waiting&&navigator.serviceWorker.controller)showUpdate(reg.waiting);reg.addEventListener('updatefound',()=>{const worker=reg.installing;if(!worker)return;worker.addEventListener('statechange',()=>{if(worker.state==='installed'&&navigator.serviceWorker.controller)showUpdate(worker)})});navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload())}
 addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;document.querySelectorAll('[data-install-pwa]').forEach(b=>b.hidden=false)});addEventListener('online',()=>{setStatus();replay()});addEventListener('offline',setStatus);setStatus();replay();if('serviceWorker'in navigator)addEventListener('load',()=>registerServiceWorker().catch(console.error));
+
+if(typeof customElements!=='undefined'){
+  customElements.define('ui-copy-button', class extends HTMLElement {
+    connectedCallback() {
+      if(this._init) return;
+      this._init = true;
+      this.addEventListener('click', async () => {
+        const text = this.dataset.copyText || (this.dataset.copyTarget && document.querySelector(this.dataset.copyTarget)?.textContent);
+        if(!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          const orig = this.textContent;
+          this.textContent = 'Copied!';
+          setTimeout(() => { this.textContent = orig; }, 1500);
+        } catch(e) {}
+      });
+    }
+  });
+  customElements.define('ui-toast', class extends HTMLElement {
+    connectedCallback() {
+      const duration = parseInt(this.getAttribute('duration') || '3000', 10);
+      setTimeout(() => { this.remove(); }, duration);
+    }
+  });
+}
 })();
+

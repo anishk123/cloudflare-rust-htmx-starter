@@ -4,25 +4,33 @@ The starter is intentionally small enough to understand end to end. Boundaries f
 
 ## Request flow
 
-```text
-browser / crawler / integration
-             │
-             ▼
- Cloudflare Static Assets ── public browser files
-             │
-             ▼
-       Rust app Worker
-   route → identity → policy
-      │        │        │
-      ▼        ▼        ▼
-     D1       R2     Queue producer
-                           │
-                           ▼
-                    Rust jobs Worker
-                           │
-                           ▼
-                          D1
+```mermaid
+flowchart TB
+  Client["browser / crawler / integration"]
+  Static["Cloudflare Static Assets<br/>public browser files"]
+  App["Rust App Worker<br/>route → identity → policy"]
+  D1["Cloudflare D1<br/>relational database"]
+  R2["Cloudflare R2<br/>object storage"]
+  Queue["Cloudflare Queue<br/>async job producer"]
+  Jobs["Rust Jobs Worker<br/>idempotent consumer"]
+
+  Client --> Static
+  Static --> App
+  App --> D1
+  App --> R2
+  App --> Queue
+  Queue --> Jobs
+  Jobs --> D1
+
+  style Client fill:#eef6ff,stroke:#3776ab,stroke-width:2px
+  style Static fill:#f5f3ff,stroke:#6d28d9,stroke-width:2px
+  style App fill:#eefdf3,stroke:#16803c,stroke-width:2px
+  style D1 fill:#fff7ed,stroke:#c2410c,stroke-width:2px
+  style R2 fill:#ecfeff,stroke:#0891b2,stroke-width:2px
+  style Queue fill:#fef2f2,stroke:#dc2626,stroke-width:2px
+  style Jobs fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
 ```
+
 
 Cloudflare Static Assets serves `public/` before the application Worker. Versioned vendor files are immutable. Starter CSS/JavaScript and the credential-free offline shell use revalidation.
 
@@ -73,12 +81,29 @@ Read [Authentication](AUTH.md) before replacing the development identity with re
 
 All dynamic responses pass through `workers/app/src/http.rs`:
 
-```text
-workspace / mutation / CSRF / error / negative lookup → no-store
-explicitly published HTML, Markdown or JSON          → public content policy
-robots, sitemap and llms.txt                         → discovery policy
-static files                                         → public/_headers
+```mermaid
+flowchart TB
+  Req["Dynamic HTTP Request"]
+  Http["workers/app/src/http.rs<br/>Response Policy Engine"]
+  Private["Workspace / Mutation / CSRF / Error<br/>Cache-Control: no-store"]
+  Public["Explicitly Published Note<br/>Public Edge & Browser Freshness"]
+  Discovery["robots.txt / sitemap.xml / llms.txt<br/>Public Discovery Policy"]
+  StaticHeaders["Static Assets<br/>public/_headers"]
+
+  Req --> Http
+  Http --> Private
+  Http --> Public
+  Http --> Discovery
+  Http --> StaticHeaders
+
+  style Req fill:#eef6ff,stroke:#3776ab,stroke-width:2px
+  style Http fill:#f5f3ff,stroke:#6d28d9,stroke-width:2px
+  style Private fill:#fef2f2,stroke:#dc2626,stroke-width:2px
+  style Public fill:#eefdf3,stroke:#16803c,stroke-width:2px
+  style Discovery fill:#fff7ed,stroke:#c2410c,stroke-width:2px
+  style StaticHeaders fill:#ecfeff,stroke:#0891b2,stroke-width:2px
 ```
+
 
 Browser and Cloudflare edge freshness are distinct for published responses. Public URLs redirect non-canonical slugs permanently. Missing/draft/malformed publication routes are never edge-cached, preventing negative-cache publication delays.
 
@@ -86,15 +111,24 @@ The service worker caches only a token-free application shell. It never stores w
 
 ## Offline mutation flow
 
-```text
-offline form submit
-   → validate native form fields
-   → store content + stable operation ID in IndexedDB
-   → reconnect
-   → GET /session/csrf (authenticated, no-store)
-   → replay mutation with current token
-   → remove operation only after success
+```mermaid
+flowchart LR
+  Submit["Offline Form Submit"] --> Validate["Native Validation"]
+  Validate --> Store["IndexedDB Storage<br/>Operation ID + Payload"]
+  Store --> Reconnect["Network Reconnect"]
+  Reconnect --> CSRF["GET /session/csrf<br/>Authenticated, no-store"]
+  CSRF --> Replay["Replay Mutation<br/>With fresh token"]
+  Replay --> Clear["Remove Operation<br/>On 2xx Success"]
+
+  style Submit fill:#fff7ed,stroke:#c2410c,stroke-width:2px
+  style Validate fill:#f5f3ff,stroke:#6d28d9,stroke-width:2px
+  style Store fill:#ecfeff,stroke:#0891b2,stroke-width:2px
+  style Reconnect fill:#eef6ff,stroke:#3776ab,stroke-width:2px
+  style CSRF fill:#fef2f2,stroke:#dc2626,stroke-width:2px
+  style Replay fill:#eefdf3,stroke:#16803c,stroke-width:2px
+  style Clear fill:#f0fdf4,stroke:#16a34a,stroke-width:2px
 ```
+
 
 Failed 4xx replay remains visible as “sync needs attention” rather than disappearing. Offline scope is deliberately limited to data with defined replay semantics.
 
